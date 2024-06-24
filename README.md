@@ -1,2 +1,3 @@
 # spectral-topology
-dataset storage for demo
+
+Utensils for spectral topology project. 
