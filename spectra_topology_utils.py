@@ -444,9 +444,6 @@ def Phi_graph(c, Emax=4, Elen=400):
     ske = skeletonize(binarized_Phi_image(c, Emax, Elen), method='lee')
     return skeleton2graph(ske)
 
-import networkx as nx
-from skeleton_graph import skeleton2graph
-
 def draw_image(image, ax=None, overlay_graph=False, **ax_set_kwargs):
     def to_graph(img, **kwargs):
         ske = skeletonize(img, method='lee')
