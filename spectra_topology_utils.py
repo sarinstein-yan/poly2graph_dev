@@ -115,17 +115,17 @@ def parse_struc(img, nbs, acc, iso, ring):
                 edges.append(edge)
     return nodes, edges
     
-# use nodes and edges build a networkx graph
+# use nodes and edges to build a networkx graph
 def build_graph(nodes, edges, multi=False, full=True):
     os = np.array([i.mean(axis=0) for i in nodes])
     if full: os = os.round().astype(np.uint16)
     graph = nx.MultiGraph() if multi else nx.Graph()
     for i in range(len(nodes)):
-        graph.add_node(i, pts=nodes[i], o=os[i])
+        graph.add_node(i, o=os[i], pts=nodes[i])
     for s,e,pts in edges:
         if full: pts[[0,-1]] = os[[s,e]]
         l = np.linalg.norm(pts[1:]-pts[:-1], axis=1).sum()
-        graph.add_edge(s,e, pts=pts, weight=l)
+        graph.add_edge(s,e, weight=l, pts=pts)
     return graph
 
 def mark_node(ske):
@@ -160,9 +160,8 @@ def skeleton2graph(ske, multi=True, iso=True, ring=True, full=True):
         the skeleton. If False, ring structures are ignored.
     
     full : bool, optional, default: True
-        If True, the graph nodes include the full coordinate arrays of the 
-        original points. If False, the nodes include only the rounded 
-        coordinates.
+        If True, the graph nodes include the rounded coordinate arrays of the 
+        original points. If False, the nodes include the full coordinates.
 
     Returns:
     --------
@@ -221,7 +220,7 @@ def draw_skeleton_graph(img, graph, cn=255, ce=128):
     for idx in graph.nodes():
         pts = graph.nodes[idx]['pts']
         img[np.dot(pts, acc)] = cn
-    return img.reshape(shape)\
+    return img.reshape(shape)
 
 ############################################################
 
@@ -445,9 +444,9 @@ def Phi_graph(c, Emax=4, Elen=400):
     return skeleton2graph(ske)
 
 def draw_image(image, ax=None, overlay_graph=False, **ax_set_kwargs):
-    def to_graph(img, **kwargs):
+    def to_graph(img):
         ske = skeletonize(img, method='lee')
-        return skeleton2graph(ske, **kwargs)
+        return skeleton2graph(ske)
 
     if ax is None: ax = plt.gca()
     ax.imshow(image, cmap='bone')
@@ -462,3 +461,40 @@ def draw_image(image, ax=None, overlay_graph=False, **ax_set_kwargs):
         nodes = overlay_graph.nodes()
         ps = np.array([nodes[i]['o'] for i in nodes])
         ax.plot(ps[:,1], ps[:,0], 'r.')
+
+
+
+#################### Experimental ####################
+
+def OBC_spectra_degree7_1band(c, N, pbc=False):
+    '''
+    Calculate the energy spectrum of the OBC Hamiltonian
+    
+    Parameters:
+    -----------
+    c: array_like
+        Coefficients of the Hamiltonian. Should be symmetric, 
+        len(c) should be 7, the middle one is z^0 coefficient.
+    N: int
+        Number of sites in the chain.
+    pbc: bool, optional
+        If True, use periodic boundary condition. Default is False.
+
+    Returns:
+    --------
+    E_Re: ndarray
+        Real part of the energy spectrum
+    E_Im: ndarray
+        Imaginary part of the energy spectrum
+    '''
+    H = np.eye(N, k=-3) * c[0]
+    H += np.eye(N, k=-2) * c[1]
+    H += np.eye(N, k=-1) * c[2]
+    H += np.eye(N, k=1) * c[4]
+    H += np.eye(N, k=2) * c[5]
+    H += np.eye(N, k=3) * c[6]
+    if pbc:
+        H[-3:, :3] = H[:3, 3:6]
+        H[:3, -3:] = H[3:6, :3]
+    E = np.linalg.eigvals(H)
+    return E.real, E.imag
