@@ -462,6 +462,99 @@ def draw_image(image, ax=None, overlay_graph=False, **ax_set_kwargs):
         ps = np.array([nodes[i]['o'] for i in nodes])
         ax.plot(ps[:,1], ps[:,0], 'r.')
 
+############################################################
+
+######################### Line Graph #######################
+from functools import partial
+
+def LG_undirected(G, selfloops=False, create_using=None, L_edge_attr_dim=1):
+    """Returns the line graph L of the (multi)-graph G.
+
+    Edges in G appear as nodes in L, represented as sorted tuples of the form
+    (u,v), or (u,v,key) if G is a multigraph. A node in L corresponding to
+    the edge {u,v} is connected to every node corresponding to an edge that
+    involves u or v.
+
+    Parameters
+    ----------
+    G : graph
+        An undirected graph or multigraph.
+    selfloops : bool
+        If `True`, then self-loops are included in the line graph. If `False`,
+        they are excluded.
+    create_using : NetworkX graph constructor, optional (default=nx.Graph)
+       Graph type to create. If graph instance, then cleared before populated.
+    L_edge_attr_dim : int
+        Number of edge attributes to be included in the line graph. If 1, only
+        the common node's attributes are included. If 3, all attributes from
+        the three nodes connected by the edges a and b are included.
+
+    Notes
+    -----
+    The standard algorithm for line graphs of undirected graphs does not
+    produce self-loops.
+
+    """
+    L = nx.empty_graph(0, create_using, default=G.__class__)
+
+    # Graph specific functions for edges.
+    get_edges = partial(G.edges, keys=True, data=True) if G.is_multigraph() else G.edges(data=True)
+    
+    # Determine if we include self-loops or not.
+    shift = 0 if selfloops else 1
+
+    # Introduce numbering of nodes
+    node_index = {n: i for i, n in enumerate(G)}
+
+    # Lift canonical representation of nodes to edges in line graph
+    edge_key_function = lambda edge: (node_index[edge[0]], node_index[edge[1]])
+
+    if L_edge_attr_dim != 1 and L_edge_attr_dim != 3:
+        raise ValueError("L_edge_attr_dim must be 1 or 3")
+
+    edges = set()
+    for u in G:
+        # Label nodes as a sorted tuple of nodes in original graph.
+        # Decide on representation of {u, v} as (u, v) or (v, u) depending on node_index.
+        # -> This ensures a canonical representation and avoids comparing values of different types.
+        nodes = [tuple(sorted(x[:2], key=node_index.get)) + (x[2],) for x in get_edges(u)]
+
+        if len(nodes) == 1:
+            # Then the edge will be an isolated node in L.
+            edge = nodes[0]
+            canonical_edge = (min(edge[0], edge[1]), max(edge[0], edge[1]), edge[2])
+            L.add_node(canonical_edge, **G.get_edge_data(*edge[:3]))
+  
+        for i, a in enumerate(nodes):
+            canonical_a = (min(a[0], a[1]), max(a[0], a[1]), a[2])
+            L.add_node(canonical_a, **G.get_edge_data(*a[:3]))  # Transfer edge attributes to node
+            for b in nodes[i + shift:]:
+                canonical_b = (min(b[0], b[1]), max(b[0], b[1]), b[2])
+                edge = tuple(sorted((canonical_a, canonical_b), key=edge_key_function))
+                if edge not in edges:
+                    if L_edge_attr_dim == 1:
+                        # find the common node u. TODO: modify for self-loops
+                        u = set(a[:2]).intersection(set(b[:2])).pop()
+                        attr = G.nodes[u]
+                    elif L_edge_attr_dim == 3:
+                        # Combine attributes from all nodes connected by the edges a and b
+                        attr = {}
+                        for key in G.nodes[a[0]]:
+                            attr[f"{key}_{a[0]}"] = G.nodes[a[0]][key]
+                        for key in G.nodes[a[1]]:
+                            attr[f"{key}_{a[1]}"] = G.nodes[a[1]][key]
+                        for key in G.nodes[b[0]]:
+                            attr[f"{key}_{b[0]}"] = G.nodes[b[0]][key]
+                        for key in G.nodes[b[1]]:
+                            attr[f"{key}_{b[1]}"] = G.nodes[b[1]][key]
+                    L.add_edge(canonical_a, canonical_b, **attr)
+                    edges.add(edge)
+                    # print(f"Added edge: {canonical_a} -> {canonical_b} with attributes {attr}")
+    return L
+
+
+
+
 
 
 #################### Experimental ####################
@@ -490,6 +583,7 @@ def OBC_spectra_degree7_1band(c, N, pbc=False):
     H = np.eye(N, k=-3) * c[0]
     H += np.eye(N, k=-2) * c[1]
     H += np.eye(N, k=-1) * c[2]
+    H += np.eye(N) * c[3]
     H += np.eye(N, k=1) * c[4]
     H += np.eye(N, k=2) * c[5]
     H += np.eye(N, k=3) * c[6]
