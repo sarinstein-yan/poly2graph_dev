@@ -2,8 +2,8 @@ from typing import Any, Callable, Dict, Final, List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-from torch import Tensor, Parameter
-from torch.nn import Identity, Linear, ModuleList, GRUCell
+from torch import Tensor
+from torch.nn import Identity, Linear, ModuleList, GRUCell, Parameter
 
 from torch_geometric.data import Data
 from torch_geometric.loader import CachedLoader, NeighborLoader
