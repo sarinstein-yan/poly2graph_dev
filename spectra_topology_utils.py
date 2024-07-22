@@ -116,16 +116,25 @@ def parse_struc(img, nbs, acc, iso, ring):
     return nodes, edges
     
 # use nodes and edges to build a networkx graph
-def build_graph(nodes, edges, multi=False, full=True):
+def build_graph(nodes, edges, multi=False, full=True, DOS_image=None):
     os = np.array([i.mean(axis=0) for i in nodes])
     if full: os = os.round().astype(np.uint16)
     graph = nx.MultiGraph() if multi else nx.Graph()
     for i in range(len(nodes)):
-        graph.add_node(i, o=os[i], pts=nodes[i])
+        if DOS_image is not None:
+            node_dos = {'dos': DOS_image[os[i][0], os[i][1]]}
+            # dos_list = [DOS_image[pt[0], pt[1]] for pt in nodes[i]]
+            # node_dos = {'dos': np.mean(dos_list)}
+        else: node_dos = {}
+        graph.add_node(i, o=os[i], pts=nodes[i], **node_dos)
     for s,e,pts in edges:
         if full: pts[[0,-1]] = os[[s,e]]
+        if DOS_image is not None:
+            dos_list = [DOS_image[pt[0], pt[1]] for pt in pts]
+            edge_dos = {'dos': np.mean(dos_list)}
+        else: edge_dos = {}
         l = np.linalg.norm(pts[1:]-pts[:-1], axis=1).sum()
-        graph.add_edge(s,e, weight=l, pts=pts)
+        graph.add_edge(s,e, weight=l, pts=pts, **edge_dos)
     return graph
 
 def mark_node(ske):
@@ -135,7 +144,7 @@ def mark_node(ske):
     mark(buf, nbs)
     return buf
     
-def skeleton2graph(ske, multi=True, iso=True, ring=True, full=True):
+def skeleton2graph(ske, multi=True, iso=False, ring=True, full=True, DOS_image=None):
     """
     Converts a skeletonized image into an NetworkX graph object. 
 
@@ -162,6 +171,10 @@ def skeleton2graph(ske, multi=True, iso=True, ring=True, full=True):
     full : bool, optional, default: True
         If True, the graph nodes include the rounded coordinate arrays of the 
         original points. If False, the nodes include the full coordinates.
+
+    DOS_image : numpy.ndarray, optional
+        A 2D image of the density of states (DOS) values. If provided, the
+        nodes and edges of the graph will include the DOS values as attributes.
 
     Returns:
     --------
@@ -203,7 +216,7 @@ def skeleton2graph(ske, multi=True, iso=True, ring=True, full=True):
     acc = np.cumprod((1,)+buf.shape[::-1][:-1])[::-1]
     mark(buf, nbs)
     nodes, edges = parse_struc(buf, nbs, acc, iso, ring)
-    return build_graph(nodes, edges, multi, full)
+    return build_graph(nodes, edges, multi, full, DOS_image)
     
 # draw the graph
 def draw_skeleton_graph(img, graph, cn=255, ce=128):
@@ -374,7 +387,7 @@ def PosLoG(image, sigmas=[0,1], ksizes=[3],
             
     return filtered_max
 
-def Phi_image(c, Emax=2, Elen=400, method=None):
+def Phi_image(c, Emax=4, Elen=400, method=None):
     '''
     Generate the spectral potential landscape Phi(E) for a given polynomial.
     1-band only.
@@ -433,17 +446,25 @@ def Phi_image(c, Emax=2, Elen=400, method=None):
         phi = np.log(betas[:, 1]-betas[:, 0])
     return phi.reshape(E_complex.shape)
 
-def binarized_Phi_image(c, Emax=2, Elen=400, thresholder=threshold_mean):
+def binarized_Phi_image(c, Emax=4, Elen=400, thresholder=threshold_mean):
     phi = Phi_image(c, Emax, Elen)
     ridge = PosLoG(phi)
     binary = ridge > thresholder(ridge)
     return binary
 
-def Phi_graph(c, Emax=4, Elen=400):
-    ske = skeletonize(binarized_Phi_image(c, Emax, Elen), method='lee')
-    return skeleton2graph(ske)
+def Phi_graph(c, Emax=4, Elen=400, thresholder=threshold_mean, DOS_feature=True):
+    phi = Phi_image(c, Emax, Elen)
+    ridge = PosLoG(phi)
+    binary = ridge > thresholder(ridge)
+    ske = skeletonize(binary, method='lee')
+    DOS_image = ridge if DOS_feature else None
+    # multiplier = 10 * Emax/Elen if edge_weight_normalize else 1
+    graph = skeleton2graph(ske, DOS_image=DOS_image)
+    attrs = {'polynomial_coeff': c, 'Emax': Emax, 'Elen': Elen}
+    graph.graph.update(attrs)
+    return graph
 
-def draw_image(image, ax=None, overlay_graph=False, **ax_set_kwargs):
+def draw_image(image, ax=None, overlay_graph=False, ax_set_kwargs={}):
     def to_graph(img):
         ske = skeletonize(img, method='lee')
         return skeleton2graph(ske)
