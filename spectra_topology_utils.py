@@ -131,7 +131,7 @@ def build_graph(nodes, edges, multi=False, full=True, DOS_image=None):
         if full: pts[[0,-1]] = os[[s,e]]
         if DOS_image is not None:
             dos_list = [DOS_image[pt[0], pt[1]] for pt in pts]
-            edge_dos = {'dos': np.mean(dos_list)}
+            edge_dos = {'avg_dos': np.mean(dos_list)}
         else: edge_dos = {}
         l = np.linalg.norm(pts[1:]-pts[:-1], axis=1).sum()
         graph.add_edge(s,e, weight=l, pts=pts, **edge_dos)
