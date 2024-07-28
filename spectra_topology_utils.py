@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 #################### skeleton_graph ########################
 
-def neighbors(shape):
+def _neighbors(shape):
     dim = len(shape)
     block = np.ones([3]*dim)
     block[tuple([1]*dim)] = 0
@@ -22,7 +22,7 @@ def neighbors(shape):
     return np.dot(idx, acc[::-1])
 
 @njit # my mark
-def mark(img, nbs): # mark the array use (0, 1, 2)
+def _mark(img, nbs): # mark the array use (0, 1, 2)
     img = img.ravel()
     for p in range(len(img)):
         if img[p]==0:continue
@@ -33,7 +33,7 @@ def mark(img, nbs): # mark the array use (0, 1, 2)
         else:img[p]=2
 
 @njit # trans index to r, c...
-def idx2rc(idx, acc):
+def _idx2rc(idx, acc):
     rst = np.zeros((len(idx), len(acc)), dtype=np.int16)
     for i in range(len(idx)):
         for j in range(len(acc)):
@@ -43,7 +43,7 @@ def idx2rc(idx, acc):
     return rst
     
 @njit # fill a node (two or more points)
-def fill(img, p, num, nbs, acc, buf):
+def _fill(img, p, num, nbs, acc, buf):
     img[p] = num
     buf[0] = p
     cur = 0; s = 1; iso = True;
@@ -59,10 +59,10 @@ def fill(img, p, num, nbs, acc, buf):
             if img[cp]==1: iso=False
         cur += 1
         if cur==s:break
-    return iso, idx2rc(buf[:s], acc)
+    return iso, _idx2rc(buf[:s], acc)
 
 @njit # trace the edge and use a buffer, then buf.copy, if using [] numba doesn't work
-def trace(img, p, nbs, acc, buf):
+def _trace(img, p, nbs, acc, buf):
     c1 = 0; c2 = 0;
     newp = 0
     cur = 1
@@ -83,17 +83,17 @@ def trace(img, p, nbs, acc, buf):
                 newp = cp
         p = newp
         if c2!=0:break
-    return (c1-10, c2-10, idx2rc(buf[:cur+1], acc))
+    return (c1-10, c2-10, _idx2rc(buf[:cur+1], acc))
    
 @njit # parse the image then get the nodes and edges
-def parse_struc(img, nbs, acc, iso, ring):
+def _parse_struc(img, nbs, acc, iso, ring):
     img = img.ravel()
     buf = np.zeros(131072, dtype=np.int64) # 2**17 = 131072
     num = 10
     nodes = []
     for p in range(len(img)):
         if img[p] == 2:
-            isiso, nds = fill(img, p, num, nbs, acc, buf)
+            isiso, nds = _fill(img, p, num, nbs, acc, buf)
             if isiso and not iso: continue
             num += 1
             nodes.append(nds)
@@ -102,16 +102,16 @@ def parse_struc(img, nbs, acc, iso, ring):
         if img[p] <10: continue
         for dp in nbs:
             if img[p+dp]==1:
-                edge = trace(img, p+dp, nbs, acc, buf)
+                edge = _trace(img, p+dp, nbs, acc, buf)
                 edges.append(edge)
     if not ring: return nodes, edges
     for p in range(len(img)):
         if img[p]!=1: continue
         img[p] = num; num += 1
-        nodes.append(idx2rc([p], acc))
+        nodes.append(_idx2rc([p], acc))
         for dp in nbs:
             if img[p+dp]==1:
-                edge = trace(img, p+dp, nbs, acc, buf)
+                edge = _trace(img, p+dp, nbs, acc, buf)
                 edges.append(edge)
     return nodes, edges
     
@@ -139,9 +139,9 @@ def build_graph(nodes, edges, multi=False, full=True, DOS_image=None):
 
 def mark_node(ske):
     buf = np.pad(ske, (1,1), mode='constant').astype(np.uint16)
-    nbs = neighbors(buf.shape)
+    nbs = _neighbors(buf.shape)
     acc = np.cumprod((1,)+buf.shape[::-1][:-1])[::-1]
-    mark(buf, nbs)
+    _mark(buf, nbs)
     return buf
     
 def skeleton2graph(ske, multi=True, iso=False, ring=True, full=True, DOS_image=None):
@@ -196,7 +196,7 @@ def skeleton2graph(ske, multi=True, iso=False, ring=True, full=True, DOS_image=N
     Examples:
     ---------
     >>> import numpy as np
-    >>> from skeleton_graph import skeleton2graph
+    >>> from spectra_topology_utils import skeleton2graph
     >>> ske = np.array([
             [0,0,0,1,0,0,0,0,0],
             [0,0,0,1,0,0,0,1,0],
@@ -212,10 +212,10 @@ def skeleton2graph(ske, multi=True, iso=False, ring=True, full=True, DOS_image=N
     >>> print(graph.edges)
     """
     buf = np.pad(ske, (1,1), mode='constant').astype(np.uint16)
-    nbs = neighbors(buf.shape)
+    nbs = _neighbors(buf.shape)
     acc = np.cumprod((1,)+buf.shape[::-1][:-1])[::-1]
-    mark(buf, nbs)
-    nodes, edges = parse_struc(buf, nbs, acc, iso, ring)
+    _mark(buf, nbs)
+    nodes, edges = _parse_struc(buf, nbs, acc, iso, ring)
     return build_graph(nodes, edges, multi, full, DOS_image)
     
 # draw the graph
