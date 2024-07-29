@@ -12,13 +12,14 @@ from torch_geometric.nn.conv import (
     GATConv,
     GATv2Conv,
     GCNConv,
+    GraphConv,
     GINConv,
     GINEConv,
     MessagePassing,
     PNAConv,
     SAGEConv,
 )
-from torch_geometric.nn.models import MLP
+# from torch_geometric.nn.models import MLP
 from torch_geometric.nn.models.jumping_knowledge import JumpingKnowledge
 from torch_geometric.nn.resolver import (
     activation_resolver,
@@ -660,6 +661,9 @@ class GCN(BasicGNN):
             final linear transformation to convert hidden node embeddings to
             output size :obj:`out_channels`. (default: :obj:`None`)
         dropout (float, optional): Dropout probability. (default: :obj:`0.`)
+        graphconv (bool, optional): If set to :obj:`True`, will use the
+            :class:`~torch_geometric.nn.conv.GraphConv` operator instead of
+            :class:`~torch_geometric.nn.conv.GCNConv`. (default: :obj:`False`)
         act (str or Callable, optional): The non-linear activation function to
             use. (default: :obj:`"relu"`)
         act_first (bool, optional): If set to :obj:`True`, activation is
@@ -686,7 +690,9 @@ class GCN(BasicGNN):
 
     def init_conv(self, in_channels: int, out_channels: int,
                   **kwargs) -> MessagePassing:
-        return GCNConv(in_channels, out_channels, **kwargs)
+        graphconv = kwargs.pop('graphconv', False)
+        Conv = GCNConv if not graphconv else GraphConv
+        return Conv(in_channels, out_channels, **kwargs)
 
 
 class GraphSAGE(BasicGNN):
