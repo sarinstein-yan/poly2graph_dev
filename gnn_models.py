@@ -1120,7 +1120,6 @@ class GATEConv(MessagePassing):
     def message(self, x_j: Tensor, alpha: Tensor) -> Tensor:
         return self.lin2(x_j) * alpha.unsqueeze(-1)
 
-
 class AttentiveFP(torch.nn.Module):
     r"""The Attentive FP model for molecular representation learning from the
     `"Pushing the Boundaries of Molecular Representation for Drug Discovery
@@ -1173,13 +1172,14 @@ class AttentiveFP(torch.nn.Module):
             self.atom_convs.append(conv)
             self.atom_grus.append(GRUCell(hidden_channels, hidden_channels))
 
-        self.mol_conv = GATConv(hidden_channels, hidden_channels,
+        self.mol_conv = GATConv(hidden_channels*num_layers, hidden_channels*num_layers,
                                 dropout=dropout, add_self_loops=False,
                                 negative_slope=0.01)
         self.mol_conv.explain = False  # Cannot explain global pooling.
-        self.mol_gru = GRUCell(hidden_channels, hidden_channels)
+        self.mol_gru = GRUCell(hidden_channels*num_layers, hidden_channels*num_layers)
 
-        self.lin2 = Linear(hidden_channels, out_channels)
+        # self.lin2 = Linear(hidden_channels, out_channels)
+        self.lin2 = Linear(hidden_channels*num_layers, out_channels)
 
         self.reset_parameters()
 
@@ -1200,22 +1200,25 @@ class AttentiveFP(torch.nn.Module):
         """"""  # noqa: D419
         # Atom Embedding:
         x = F.leaky_relu_(self.lin1(x))
-
         h = F.elu_(self.gate_conv(x, edge_index, edge_attr))
         h = F.dropout(h, p=self.dropout, training=self.training)
         x = self.gru(h, x).relu_()
+        g = [x]
 
         for conv, gru in zip(self.atom_convs, self.atom_grus):
             h = conv(x, edge_index)
             h = F.elu(h)
             h = F.dropout(h, p=self.dropout, training=self.training)
             x = gru(h, x).relu()
+            g.append(x)
+
+        x = torch.cat(g, dim=-1)
+        out = global_add_pool(x, batch).relu_()
 
         # Molecule Embedding:
         row = torch.arange(batch.size(0), device=batch.device)
         edge_index = torch.stack([row, batch], dim=0)
 
-        out = global_add_pool(x, batch).relu_()
         for t in range(self.num_timesteps):
             h = F.elu_(self.mol_conv((x, out), edge_index))
             h = F.dropout(h, p=self.dropout, training=self.training)
@@ -1228,7 +1231,8 @@ class AttentiveFP(torch.nn.Module):
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}('
                 f'in_channels={self.in_channels}, '
-                f'hidden_channels={self.hidden_channels}, '
+                f'node_channels={self.hidden_channels}, '
+                f'graph_channels={self.hidden_channels*self.num_layers}, '
                 f'out_channels={self.out_channels}, '
                 f'edge_dim={self.edge_dim}, '
                 f'num_layers={self.num_layers}, '
