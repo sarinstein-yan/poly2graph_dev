@@ -1212,7 +1212,7 @@ class AttentiveFP(torch.nn.Module):
             x = gru(h, x).relu()
             g.append(x)
 
-        x = torch.cat(g, dim=-1)
+        x = torch.cat(g, dim=-1) # concat hierarchical node embeddings
         out = global_add_pool(x, batch).relu_()
 
         # Molecule Embedding:

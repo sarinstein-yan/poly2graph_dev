@@ -96,47 +96,105 @@ def auto_Emax(c, emax=20, elen=64, e_padding=None):
     
     return boundary
 
-
-def generate_dataset_graph(file_name, samples_per_dim=7, dim=4, c_max=1.2, Elen=256):
+def generate_dataset_graph(file_name_prefix, samples_per_dim=7, dim=4, c_max=1.2, Elen=256, num_partition=1):
     # Generate all combinations of coefficients
     values = list(np.linspace(-c_max, c_max, samples_per_dim))
     combinations = list(itertools.product(values, repeat=dim))
     
-    # Prepare data structures
-    graphs = []
-    labels = []
+    # Partition the combinations
+    total_combinations = len(combinations)
+    partition_size = total_combinations // num_partition
     
-    for comb in combinations:
-        if dim == 4:
-            c = [1, comb[0], comb[1], 0, comb[2], comb[3], 1]
-        if dim == 6:
-            c = [1, comb[0], comb[1], comb[2], 0, comb[3], comb[4], comb[5], 1]
-        ### With Boxing method ###
-        Eauto = auto_Emax(c, emax=20, elen=64)
-        graph = Phi_graph(c, Emax=Eauto, Elen=Elen)
-        ### With Boxing method ###
-        graphs.append(graph)
-        labels.append(comb)
-    
-    labels = np.array(labels)
-    
-    # Serialize graphs using pickle
-    serialized_graphs = [pickle.dumps(graph) for graph in graphs]
-    
-    # Save the dataset
-    with h5py.File(file_name, 'w') as f:
-        f.create_dataset('graphs', data=np.string_(serialized_graphs))
-        f.create_dataset('labels', data=labels)
+    for partition in range(num_partition):
+        start_index = partition * partition_size
+        if partition == num_partition - 1:  # Handle the last partition
+            end_index = total_combinations
+        else:
+            end_index = (partition + 1) * partition_size
 
-def load_dataset_graph(file_name):
-    with h5py.File(file_name, 'r') as f:
-        serialized_graphs = f['graphs'][:]
-        labels = f['labels'][:]
+        partition_combinations = combinations[start_index:end_index]
+        
+        # Prepare data structures
+        graphs = []
+        labels = []
+        
+        for comb in partition_combinations:
+            if dim == 4:
+                c = [1, comb[0], comb[1], 0, comb[2], comb[3], 1]
+            if dim == 6:
+                c = [1, comb[0], comb[1], comb[2], 0, comb[3], comb[4], comb[5], 1]
+            ### With Boxing method ###
+            Eauto = auto_Emax(c, emax=20, elen=64)
+            graph = Phi_graph(c, Emax=Eauto, Elen=Elen)
+            ### With Boxing method ###
+            graphs.append(graph)
+            labels.append(comb)
+        
+        labels = np.array(labels)
+        
+        # Serialize graphs using pickle
+        serialized_graphs = [pickle.dumps(graph) for graph in graphs]
+        
+        # Save the subset of the dataset
+        file_name = f"{file_name_prefix}_part_{partition + 1}.h5"
+        with h5py.File(file_name, 'w') as f:
+            f.create_dataset('graphs', data=np.string_(serialized_graphs))
+            f.create_dataset('labels', data=labels)
 
-    graphs = [pickle.loads(graph.tobytes()) for graph in serialized_graphs]
-    return graphs, labels
+def load_dataset_graph(file_name_prefix, num_partition=1):
+    all_graphs = []
+    all_labels = []
+
+    for partition_index in range(1, num_partition + 1):
+        partition_file_name = f"{file_name_prefix}_part_{partition_index}.h5"
+        with h5py.File(partition_file_name, 'r') as f:
+            serialized_graphs = f['graphs'][:]
+            labels = f['labels'][:]
+        
+        graphs = [pickle.loads(graph.tobytes()) for graph in serialized_graphs]
+        all_graphs.extend(graphs)
+        all_labels.extend(labels)
+    
+    return all_graphs, np.array(all_labels)
+
+# def generate_dataset_graph(file_name, samples_per_dim=7, dim=4, c_max=1.2, Elen=256):
+#     # Generate all combinations of coefficients
+#     values = list(np.linspace(-c_max, c_max, samples_per_dim))
+#     combinations = list(itertools.product(values, repeat=dim))
+    
+#     # Prepare data structures
+#     graphs = []
+#     labels = []
+    
+#     for comb in combinations:
+#         if dim == 4:
+#             c = [1, comb[0], comb[1], 0, comb[2], comb[3], 1]
+#         if dim == 6:
+#             c = [1, comb[0], comb[1], comb[2], 0, comb[3], comb[4], comb[5], 1]
+#         Eauto = auto_Emax(c, emax=20, elen=64)
+#         graph = Phi_graph(c, Emax=Eauto, Elen=Elen)
+#         graphs.append(graph)
+#         labels.append(comb)
+    
+#     labels = np.array(labels)
+    
+#     # Serialize graphs using pickle
+#     serialized_graphs = [pickle.dumps(graph) for graph in graphs]
+    
+#     # Save the dataset
+#     with h5py.File(file_name, 'w') as f:
+#         f.create_dataset('graphs', data=np.string_(serialized_graphs))
+#         f.create_dataset('labels', data=labels)
+
+# def load_dataset_graph(file_name):
+#     with h5py.File(file_name, 'r') as f:
+#         serialized_graphs = f['graphs'][:]
+#         labels = f['labels'][:]
+
+#     graphs = [pickle.loads(graph.tobytes()) for graph in serialized_graphs]
+#     return graphs, labels
 
 if __name__ == '__main__':
     if not os.path.exists('./Datasets'):
         os.makedirs('./Datasets')
-    generate_dataset_graph('./Datasets/dataset_graph_dim6.h5', samples_per_dim=7, dim=6, c_max=1.2, Elen=1024)
+    generate_dataset_graph('./Datasets/dataset_graph_dim6', samples_per_dim=7, dim=6, c_max=1.2, Elen=1024)
