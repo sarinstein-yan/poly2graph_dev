@@ -116,7 +116,7 @@ def _parse_struc(img, nbs, acc, iso, ring):
     return nodes, edges
     
 # use nodes and edges to build a networkx graph
-def build_graph(nodes, edges, multi=False, full=True, DOS_image=None):
+def build_graph(nodes, edges, multi=False, full=True, DOS_image=None, add_pts=False):
     os = np.array([i.mean(axis=0) for i in nodes])
     if full: os = os.round().astype(np.uint16)
     graph = nx.MultiGraph() if multi else nx.Graph()
@@ -126,7 +126,8 @@ def build_graph(nodes, edges, multi=False, full=True, DOS_image=None):
             # dos_list = [DOS_image[pt[0], pt[1]] for pt in nodes[i]]
             # node_dos = {'dos': np.mean(dos_list)}
         else: node_dos = {}
-        graph.add_node(i, o=os[i], pts=nodes[i], **node_dos)
+        graph.add_node(i, o=os[i], **node_dos)
+        if add_pts: graph.nodes[i]['pts'] = nodes[i]
     for s,e,pts in edges:
         if full: pts[[0,-1]] = os[[s,e]]
         if DOS_image is not None:
@@ -134,7 +135,10 @@ def build_graph(nodes, edges, multi=False, full=True, DOS_image=None):
             edge_dos = {'avg_dos': np.mean(dos_list)}
         else: edge_dos = {}
         l = np.linalg.norm(pts[1:]-pts[:-1], axis=1).sum()
-        graph.add_edge(s,e, weight=l, pts=pts, **edge_dos)
+        if add_pts:
+            graph.add_edge(s,e, weight=l, pts=pts, **edge_dos)
+        else:
+            graph.add_edge(s,e, weight=l, **edge_dos)
     return graph
 
 def mark_node(ske):
@@ -144,7 +148,7 @@ def mark_node(ske):
     _mark(buf, nbs)
     return buf
     
-def skeleton2graph(ske, multi=True, iso=False, ring=True, full=True, DOS_image=None):
+def skeleton2graph(ske, multi=True, iso=False, ring=True, full=True, DOS_image=None, add_pts=False):
     """
     Converts a skeletonized image into an NetworkX graph object. 
 
@@ -216,7 +220,7 @@ def skeleton2graph(ske, multi=True, iso=False, ring=True, full=True, DOS_image=N
     acc = np.cumprod((1,)+buf.shape[::-1][:-1])[::-1]
     _mark(buf, nbs)
     nodes, edges = _parse_struc(buf, nbs, acc, iso, ring)
-    return build_graph(nodes, edges, multi, full, DOS_image)
+    return build_graph(nodes, edges, multi, full, DOS_image, add_pts)
     
 # draw the graph
 def draw_skeleton_graph(img, graph, cn=255, ce=128):
@@ -452,22 +456,22 @@ def binarized_Phi_image(c, Emax=4, Elen=400, thresholder=threshold_mean):
     binary = ridge > thresholder(ridge)
     return binary
 
-def Phi_graph(c, Emax=4, Elen=400, thresholder=threshold_mean, DOS_feature=True):
+def Phi_graph(c, Emax=4, Elen=400, thresholder=threshold_mean, DOS_feature=True, s2g_kwargs={}):
     phi = Phi_image(c, Emax, Elen)
     ridge = PosLoG(phi)
     binary = ridge > thresholder(ridge)
     ske = skeletonize(binary, method='lee')
     DOS_image = ridge if DOS_feature else None
     # multiplier = 10 * Emax/Elen if edge_weight_normalize else 1
-    graph = skeleton2graph(ske, DOS_image=DOS_image)
+    graph = skeleton2graph(ske, DOS_image=DOS_image, **s2g_kwargs)
     attrs = {'polynomial_coeff': c, 'Emax': Emax, 'Elen': Elen}
     graph.graph.update(attrs)
     return graph
 
-def draw_image(image, ax=None, overlay_graph=False, ax_set_kwargs={}):
-    def to_graph(img):
+def draw_image(image, ax=None, overlay_graph=False, ax_set_kwargs={}, s2g_kwargs={}):
+    def to_graph(img, **kwargs):
         ske = skeletonize(img, method='lee')
-        return skeleton2graph(ske)
+        return skeleton2graph(ske, **kwargs)
 
     if ax is None: ax = plt.gca()
     ax.imshow(image, cmap='bone')
@@ -475,9 +479,9 @@ def draw_image(image, ax=None, overlay_graph=False, ax_set_kwargs={}):
     ax.axis('off')
 
     if overlay_graph:
-        overlay_graph = to_graph(image)
-        for (s, e, key) in overlay_graph.edges(keys=True):
-            ps = overlay_graph[s][e][key]['pts']
+        overlay_graph = to_graph(image, add_pts=True, **s2g_kwargs)
+        for (s, e, key, ps) in overlay_graph.edges(keys=True, data='pts'):
+            # ps = overlay_graph[s][e][key]['pts']
             ax.plot(ps[:,1], ps[:,0], 'g-', lw=1, alpha=0.8)
         nodes = overlay_graph.nodes()
         ps = np.array([nodes[i]['o'] for i in nodes])
@@ -583,8 +587,68 @@ def hash_labels(labels, n):
     reassigned_hash_value = np.array([hash_map[val] for val in hash_value])
     return reassigned_hash_value
 
+def _average_attributes(node):
+    # Check if 'o' and 'dos' attributes exist, otherwise initialize them
+    if 'o' in node and 'dos' in node:
+        sum_o = np.array(node['o'], dtype=float)
+        sum_dos = node['dos']
+        count = 1
+    else:
+        sum_o = np.zeros(2, dtype=float)  # Assuming 'o' is a 2D array based on the initial example
+        sum_dos = 0.0
+        count = 0
+    
+    # If there is no 'contraction' field, return the current sums and count
+    if 'contraction' not in node:
+        return sum_o, sum_dos, count
+    
+    # Recursively process the contracted nodes
+    for _, contracted_node in node['contraction'].items():
+        o, dos, n = _average_attributes(contracted_node)
+        sum_o += np.array(o, dtype=float)
+        sum_dos += dos
+        count += n
+    
+    # Avoid division by zero
+    if count > 0:
+        avg_o = sum_o / count
+        avg_dos = sum_dos / count
+    else:
+        avg_o = sum_o
+        avg_dos = sum_dos
+    
+    return avg_o, avg_dos, count
 
+def _process_contracted_graph(G):
+    processed_graph = G.copy()
+    for node, attr in processed_graph.nodes(data=True):
+        avg_o, avg_dos, _ = _average_attributes(attr)
+        processed_graph.nodes[node]['o'] = avg_o
+        processed_graph.nodes[node]['dos'] = avg_dos
+        # Remove the contraction field as it's no longer needed
+        if 'contraction' in attr:
+            del processed_graph.nodes[node]['contraction']
+    return processed_graph
 
+def contract_close_nodes(G, threshold=15):
+    contracted_graph = G.copy()
+    while True:
+        sorted_edges = sorted(contracted_graph.edges(data='weight'), key=lambda x: x[2])
+        # Check if all edges are above the threshold
+        if all(l >= threshold for _, _, l in sorted_edges):
+            break
+        for u, v, l in sorted_edges:
+            if l < threshold:
+                try:
+                    temp_graph = _process_contracted_graph(nx.contracted_nodes(contracted_graph, u, v, self_loops=False, copy=True))
+                    # print(temp_graph.nodes(data=True)) # Debugging
+                    if temp_graph.number_of_edges() == 0:
+                        return G  # Return the original graph if contraction leads to no edges
+                    contracted_graph = temp_graph
+                except:
+                    pass
+        if contracted_graph.number_of_edges() == 0: return G
+    return contracted_graph
 
 
 #################### Experimental ####################

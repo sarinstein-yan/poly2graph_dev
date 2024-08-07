@@ -141,21 +141,30 @@ def generate_dataset_graph(file_name_prefix, samples_per_dim=7, dim=4, c_max=1.2
             f.create_dataset('graphs', data=np.string_(serialized_graphs))
             f.create_dataset('labels', data=labels)
 
-def load_dataset_graph(file_name_prefix, num_partition=1):
-    all_graphs = []
-    all_labels = []
-
-    for partition_index in range(1, num_partition + 1):
-        partition_file_name = f"{file_name_prefix}_part_{partition_index}.h5"
-        with h5py.File(partition_file_name, 'r') as f:
+def load_dataset_graph(file_name_prefix, num_partition=None):
+    if num_partition == None:
+        file_name = f"{file_name_prefix}.h5"
+        with h5py.File(file_name, 'r') as f:
             serialized_graphs = f['graphs'][:]
             labels = f['labels'][:]
         
         graphs = [pickle.loads(graph.tobytes()) for graph in serialized_graphs]
-        all_graphs.extend(graphs)
-        all_labels.extend(labels)
-    
-    return all_graphs, np.array(all_labels)
+        return graphs, labels
+
+    else:
+        all_graphs = []
+        all_labels = []
+        for partition_index in range(1, num_partition + 1):
+            partition_file_name = f"{file_name_prefix}_part_{partition_index}.h5"
+            with h5py.File(partition_file_name, 'r') as f:
+                serialized_graphs = f['graphs'][:]
+                labels = f['labels'][:]
+            
+            graphs = [pickle.loads(graph.tobytes()) for graph in serialized_graphs]
+            all_graphs.extend(graphs)
+            all_labels.extend(labels)
+        
+        return all_graphs, np.array(all_labels)
 
 # def generate_dataset_graph(file_name, samples_per_dim=7, dim=4, c_max=1.2, Elen=256):
 #     # Generate all combinations of coefficients
