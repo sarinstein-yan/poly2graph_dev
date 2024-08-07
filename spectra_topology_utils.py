@@ -579,9 +579,10 @@ def LG_undirected(G, selfloops=False, create_using=None, L_edge_attr_dim=1):
 
 ################ Dataset Postprocessing ##############
 
-def hash_labels(labels, n):
+def hash_labels(labels, n, dim=6):
     # treat as numbers in base n, convert to decimal
-    hash_value = [1, n, n**2, n**3] @ labels.T
+    base_vec = np.array([n**i for i in range(dim)])
+    hash_value = base_vec @ labels.T
     unique_hash = np.unique(hash_value)
     hash_map = {hash_val: i for i, hash_val in enumerate(unique_hash)}
     reassigned_hash_value = np.array([hash_map[val] for val in hash_value])
