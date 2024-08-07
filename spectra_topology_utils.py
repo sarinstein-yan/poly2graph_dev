@@ -630,6 +630,10 @@ def _process_contracted_graph(G):
             del processed_graph.nodes[node]['contraction']
     return processed_graph
 
+def delete_iso_nodes(G, copy=True):
+    del_G = G.copy() if copy else G
+    return del_G.subgraph([n for n in G.nodes() if G.degree(n) > 0])
+
 def contract_close_nodes(G, threshold=15):
     contracted_graph = G.copy()
     while True:
@@ -648,7 +652,8 @@ def contract_close_nodes(G, threshold=15):
                 except:
                     pass
         if contracted_graph.number_of_edges() == 0: return G
-    return contracted_graph
+    return delete_iso_nodes(contracted_graph)
+
 
 
 #################### Experimental ####################
