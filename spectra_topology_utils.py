@@ -116,29 +116,49 @@ def _parse_struc(img, nbs, acc, iso, ring):
     return nodes, edges
     
 # use nodes and edges to build a networkx graph
-def build_graph(nodes, edges, multi=False, full=True, DOS_image=None, add_pts=False):
+def build_graph(nodes, edges, multi=False, full=True, 
+                Potential_image=None, DOS_image=None, add_pts=True):
+    
     os = np.array([i.mean(axis=0) for i in nodes])
     if full: os = os.round().astype(np.uint16)
+
     graph = nx.MultiGraph() if multi else nx.Graph()
+
     for i in range(len(nodes)):
         if DOS_image is not None:
             node_dos = {'dos': DOS_image[os[i][0], os[i][1]]}
             # dos_list = [DOS_image[pt[0], pt[1]] for pt in nodes[i]]
             # node_dos = {'dos': np.mean(dos_list)}
         else: node_dos = {}
-        graph.add_node(i, o=os[i], **node_dos)
-        if add_pts: graph.nodes[i]['pts'] = nodes[i]
+
+        if Potential_image is not None:
+            node_pot = {'potential': Potential_image[os[i][0], os[i][1]]}
+        else: node_pot = {}
+
+        graph.add_node(i, o=os[i], **node_dos, **node_pot)
+
+        # if add_pts: graph.nodes[i]['pts'] = nodes[i]
+
     for s,e,pts in edges:
         if full: pts[[0,-1]] = os[[s,e]]
+
         if DOS_image is not None:
             dos_list = [DOS_image[pt[0], pt[1]] for pt in pts]
             edge_dos = {'avg_dos': np.mean(dos_list)}
         else: edge_dos = {}
+
+        if Potential_image is not None:
+            pot_list = [Potential_image[pt[0], pt[1]] for pt in pts]
+            edge_pot = {'avg_potential': np.mean(pot_list)}
+        else: edge_pot = {}
+
         l = np.linalg.norm(pts[1:]-pts[:-1], axis=1).sum()
+
         if add_pts:
-            graph.add_edge(s,e, weight=l, pts=pts, **edge_dos)
+            graph.add_edge(s,e, weight=l, pts=pts, **edge_dos, **edge_pot)
         else:
-            graph.add_edge(s,e, weight=l, **edge_dos)
+            graph.add_edge(s,e, weight=l, **edge_dos, **edge_pot)
+
     return graph
 
 def mark_node(ske):
@@ -148,7 +168,8 @@ def mark_node(ske):
     _mark(buf, nbs)
     return buf
     
-def skeleton2graph(ske, multi=True, iso=False, ring=True, full=True, DOS_image=None, add_pts=False):
+def skeleton2graph(ske, multi=True, iso=False, ring=True, full=True, 
+                   Potential_image=None, DOS_image=None, add_pts=True):
     """
     Converts a skeletonized image into an NetworkX graph object. 
 
@@ -176,9 +197,18 @@ def skeleton2graph(ske, multi=True, iso=False, ring=True, full=True, DOS_image=N
         If True, the graph nodes include the rounded coordinate arrays of the 
         original points. If False, the nodes include the full coordinates.
 
+    Potential_image : numpy.ndarray, optional
+        A 2D image of the spectral potential landscape values. If provided,
+        the nodes and edges of the graph will include the potential values as
+        attributes.
+
     DOS_image : numpy.ndarray, optional
         A 2D image of the density of states (DOS) values. If provided, the
         nodes and edges of the graph will include the DOS values as attributes.
+
+    add_pts : bool, optional, default: False
+        If True, the nodes and edges of the graph will include all original
+        points (pixels) that make up the skeleton lines.
 
     Returns:
     --------
@@ -220,7 +250,8 @@ def skeleton2graph(ske, multi=True, iso=False, ring=True, full=True, DOS_image=N
     acc = np.cumprod((1,)+buf.shape[::-1][:-1])[::-1]
     _mark(buf, nbs)
     nodes, edges = _parse_struc(buf, nbs, acc, iso, ring)
-    return build_graph(nodes, edges, multi, full, DOS_image, add_pts)
+    return build_graph(nodes, edges, multi, full, 
+                       Potential_image, DOS_image, add_pts)
     
 # draw the graph
 def draw_skeleton_graph(img, graph, cn=255, ce=128):
@@ -456,14 +487,16 @@ def binarized_Phi_image(c, Emax=4, Elen=400, thresholder=threshold_mean):
     binary = ridge > thresholder(ridge)
     return binary
 
-def Phi_graph(c, Emax=4, Elen=400, thresholder=threshold_mean, DOS_feature=True, s2g_kwargs={}):
+def Phi_graph(c, Emax=4, Elen=400, thresholder=threshold_mean, 
+              Potential_feature=True, DOS_feature=True, s2g_kwargs={}):
     phi = Phi_image(c, Emax, Elen)
     ridge = PosLoG(phi)
     binary = ridge > thresholder(ridge)
     ske = skeletonize(binary, method='lee')
+    Potential_image = phi if Potential_feature else None
     DOS_image = ridge if DOS_feature else None
     # multiplier = 10 * Emax/Elen if edge_weight_normalize else 1
-    graph = skeleton2graph(ske, DOS_image=DOS_image, **s2g_kwargs)
+    graph = skeleton2graph(ske, Potential_image=Potential_image, DOS_image=DOS_image, **s2g_kwargs)
     attrs = {'polynomial_coeff': c, 'Emax': Emax, 'Elen': Elen}
     graph.graph.update(attrs)
     return graph
@@ -636,6 +669,7 @@ def delete_iso_nodes(G, copy=True):
     return del_G.subgraph([n for n in G.nodes() if G.degree(n) > 0])
 
 def contract_close_nodes(G, threshold=15):
+    G = delete_iso_nodes(G) # remove isolated nodes
     contracted_graph = G.copy()
     while True:
         sorted_edges = sorted(contracted_graph.edges(data='weight'), key=lambda x: x[2])
@@ -652,8 +686,7 @@ def contract_close_nodes(G, threshold=15):
                     contracted_graph = temp_graph
                 except:
                     pass
-        if contracted_graph.number_of_edges() == 0: return G
-    return delete_iso_nodes(contracted_graph)
+    return delete_iso_nodes(contracted_graph) # remove isolated clusters
 
 
 

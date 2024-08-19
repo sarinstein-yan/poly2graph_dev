@@ -1,7 +1,7 @@
 import numpy as np
 import itertools, h5py, pickle
 import os
-from spectra_topology_utils import PosLoG, Phi_image, Phi_graph
+from spectra_topology_utils import PosLoG, Phi_image, Phi_graph, contract_close_nodes
 import cv2
 from skimage.filters import (threshold_triangle, threshold_li, threshold_yen,
                              threshold_minimum, threshold_isodata, threshold_mean,
@@ -96,7 +96,8 @@ def auto_Emax(c, emax=20, elen=64, e_padding=None):
     
     return boundary
 
-def generate_dataset_graph(file_name_prefix, samples_per_dim=7, dim=4, c_max=1.2, Elen=256, num_partition=1):
+def generate_dataset_graph(file_name_prefix, samples_per_dim=7, dim=4, c_max=1.2, 
+                           Elen=256, contract_threshold=14, num_partition=1):
     # Generate all combinations of coefficients
     values = list(np.linspace(-c_max, c_max, samples_per_dim))
     combinations = list(itertools.product(values, repeat=dim))
@@ -123,10 +124,11 @@ def generate_dataset_graph(file_name_prefix, samples_per_dim=7, dim=4, c_max=1.2
                 c = [1, comb[0], comb[1], 0, comb[2], comb[3], 1]
             if dim == 6:
                 c = [1, comb[0], comb[1], comb[2], 0, comb[3], comb[4], comb[5], 1]
-            ### With Boxing method ###
             Eauto = auto_Emax(c, emax=20, elen=64)
-            graph = Phi_graph(c, Emax=Eauto, Elen=Elen)
-            ### With Boxing method ###
+            graph = Phi_graph(c, Emax=Eauto, Elen=Elen, 
+                              Potential_feature=True, DOS_feature=True, s2g_kwargs={})
+            # remove short skeletons and isolated nodes and clusters
+            graph = contract_close_nodes(graph, threshold=contract_threshold)
             graphs.append(graph)
             labels.append(comb)
         
@@ -206,4 +208,4 @@ def load_dataset_graph(file_name_prefix, num_partition=None):
 if __name__ == '__main__':
     if not os.path.exists('./Datasets'):
         os.makedirs('./Datasets')
-    generate_dataset_graph('./Datasets/dataset_graph_dim6', samples_per_dim=7, dim=6, c_max=1.2, Elen=1024)
+    generate_dataset_graph('./Datasets/dataset_graph_dim6', samples_per_dim=7, dim=6, c_max=1.2, Elen=900)
