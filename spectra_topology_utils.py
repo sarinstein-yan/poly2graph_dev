@@ -623,42 +623,43 @@ def hash_labels(labels, n, dim=6):
 
 def _average_attributes(node):
     # Check if 'o' and 'dos' attributes exist, otherwise initialize them
-    if 'o' in node and 'dos' in node:
+    if all(key in node for key in ['o', 'dos', 'potential']):
         sum_o = np.array(node['o'], dtype=float)
-        sum_dos = node['dos']
+        sum_dos = node['dos']; sum_potential = node['potential']
         count = 1
     else:
         sum_o = np.zeros(2, dtype=float)  # Assuming 'o' is a 2D array based on the initial example
-        sum_dos = 0.0
+        sum_dos = 0.0; sum_potential = 0.0
         count = 0
     
     # If there is no 'contraction' field, return the current sums and count
     if 'contraction' not in node:
-        return sum_o, sum_dos, count
+        return sum_o, sum_dos, sum_potential, count
     
     # Recursively process the contracted nodes
     for _, contracted_node in node['contraction'].items():
-        o, dos, n = _average_attributes(contracted_node)
+        o, dos, potential, n = _average_attributes(contracted_node)
         sum_o += np.array(o, dtype=float)
-        sum_dos += dos
+        sum_dos += dos; sum_potential += potential
         count += n
     
     # Avoid division by zero
     if count > 0:
         avg_o = sum_o / count
         avg_dos = sum_dos / count
+        avg_potential = sum_potential / count
     else:
-        avg_o = sum_o
-        avg_dos = sum_dos
+        avg_o = sum_o; avg_dos = sum_dos; avg_potential = sum_potential
     
-    return avg_o, avg_dos, count
+    return avg_o, avg_dos, avg_potential, count
 
 def _process_contracted_graph(G):
     processed_graph = G.copy()
     for node, attr in processed_graph.nodes(data=True):
-        avg_o, avg_dos, _ = _average_attributes(attr)
+        avg_o, avg_dos, avg_potential, _ = _average_attributes(attr)
         processed_graph.nodes[node]['o'] = avg_o
         processed_graph.nodes[node]['dos'] = avg_dos
+        processed_graph.nodes[node]['potential'] = avg_potential
         # Remove the contraction field as it's no longer needed
         if 'contraction' in attr:
             del processed_graph.nodes[node]['contraction']
@@ -666,9 +667,15 @@ def _process_contracted_graph(G):
 
 def delete_iso_nodes(G, copy=True):
     del_G = G.copy() if copy else G
-    return del_G.subgraph([n for n in G.nodes() if G.degree(n) > 0])
+    isolated_nodes = [n for n in G.nodes() if G.degree(n) == 0]
+    del_G.remove_nodes_from(isolated_nodes)
+    return del_G
 
-def contract_close_nodes(G, threshold=15):
+# def delete_iso_nodes(G, copy=True):
+#     del_G = G.copy() if copy else G
+#     return del_G.subgraph([n for n in G.nodes() if G.degree(n) > 0])
+
+def contract_close_nodes(G, threshold):
     G = delete_iso_nodes(G) # remove isolated nodes
     contracted_graph = G.copy()
     while True:

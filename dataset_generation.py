@@ -212,4 +212,4 @@ def load_dataset_graph(file_name_prefix, num_partition=None):
 if __name__ == '__main__':
     if not os.path.exists('./Datasets'):
         os.makedirs('./Datasets')
-    generate_dataset_graph('./Datasets/dataset_graph_dim6', samples_per_dim=7, dim=6, c_max=1.2, Elen=900)
+    generate_dataset_graph('./Datasets/dataset_graph_dim6', samples_per_dim=7, dim=6, c_max=1.2, Elen=900, num_partition=10)
