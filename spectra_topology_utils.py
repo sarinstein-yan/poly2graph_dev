@@ -525,7 +525,13 @@ def draw_image(image, ax=None, overlay_graph=False, ax_set_kwargs={}, s2g_kwargs
 ######################### Line Graph #######################
 from functools import partial
 
-def LG_undirected(G, selfloops=False, create_using=None, L_edge_attr_dim=1):
+def _angle_between_vecs(v1, v2, origin=None):
+    if origin is not None: v1 = v1 - origin; v2 = v2 - origin
+    l1 = np.linalg.norm(v1); l2 = np.linalg.norm(v2)
+    if l1 == 0 or l2 == 0: return 0
+    else: return np.arccos(np.clip(np.dot(v1, v2)/(l1*l2), -1.0, 1.0))
+
+def LG_undirected(G, selfloops=False, create_using=None, triplet_feature=False):
     """Returns the line graph L of the (multi)-graph G.
 
     Edges in G appear as nodes in L, represented as sorted tuples of the form
@@ -567,8 +573,8 @@ def LG_undirected(G, selfloops=False, create_using=None, L_edge_attr_dim=1):
     # Lift canonical representation of nodes to edges in line graph
     edge_key_function = lambda edge: (node_index[edge[0]], node_index[edge[1]])
 
-    if L_edge_attr_dim != 1 and L_edge_attr_dim != 3:
-        raise ValueError("L_edge_attr_dim must be 1 or 3")
+    # if L_edge_attr_dim != 1 and L_edge_attr_dim != 3:
+    #     raise ValueError("L_edge_attr_dim must be 1 or 3")
 
     edges = set()
     for u in G:
@@ -590,24 +596,38 @@ def LG_undirected(G, selfloops=False, create_using=None, L_edge_attr_dim=1):
                 canonical_b = (min(b[0], b[1]), max(b[0], b[1]), b[2])
                 edge = tuple(sorted((canonical_a, canonical_b), key=edge_key_function))
                 if edge not in edges:
-                    if L_edge_attr_dim == 1:
-                        # find the common node u. TODO: modify for self-loops
-                        u = set(a[:2]).intersection(set(b[:2])).pop()
-                        attr = G.nodes[u]
-                    elif L_edge_attr_dim == 3:
-                        # Combine attributes from all nodes connected by the edges a and b
-                        attr = {}
-                        for key in G.nodes[a[0]]:
-                            attr[f"{key}_{a[0]}"] = G.nodes[a[0]][key]
-                        for key in G.nodes[a[1]]:
-                            attr[f"{key}_{a[1]}"] = G.nodes[a[1]][key]
-                        for key in G.nodes[b[0]]:
-                            attr[f"{key}_{b[0]}"] = G.nodes[b[0]][key]
-                        for key in G.nodes[b[1]]:
-                            attr[f"{key}_{b[1]}"] = G.nodes[b[1]][key]
+                    # find the common node u. TODO: modify for self-loops
+                    u = set(a[:2]).intersection(set(b[:2])).pop()
+                    attr = G.nodes[u]
+                    if triplet_feature:
+                        # Calculate the angle between edges
+                        pos_u = attr['o']
+                        v = a[0] if a[0] != u else a[1]
+                        w = b[0] if b[0] != u else b[1]
+                        angle = [_angle_between_vecs(G.nodes[v]['o'], G.nodes[w]['o'], origin=pos_u)]
+                        if 'pts2' in G.get_edge_data(*a[:3]) and 'pts2' in G.get_edge_data(*b[:3]):
+                            for pos in G.get_edge_data(*a[:3])['pts2']:
+                                angle.append(_angle_between_vecs(G.nodes[w]['o'], pos, origin=pos_u))
+                            for pos in G.get_edge_data(*b[:3])['pts2']:
+                                angle.append(_angle_between_vecs(G.nodes[v]['o'], pos, origin=pos_u))
+                        attr['angle'] = angle
+                        
+                    # elif L_edge_attr_dim == 3:
+                    #     # Combine attributes from all nodes connected by the edges a and b
+                    #     attr = {}
+                    #     for key in G.nodes[a[0]]:
+                    #         attr[f"{key}_{a[0]}"] = G.nodes[a[0]][key]
+                    #     for key in G.nodes[a[1]]:
+                    #         attr[f"{key}_{a[1]}"] = G.nodes[a[1]][key]
+                    #     for key in G.nodes[b[0]]:
+                    #         attr[f"{key}_{b[0]}"] = G.nodes[b[0]][key]
+                    #     for key in G.nodes[b[1]]:
+                    #         attr[f"{key}_{b[1]}"] = G.nodes[b[1]][key]
+
                     L.add_edge(canonical_a, canonical_b, **attr)
                     edges.add(edge)
-                    # print(f"Added edge: {canonical_a} -> {canonical_b} with attributes {attr}")
+
+                    # print(f"Added edge: {canonical_a} -> {canonical_b} with attributes {attr}") # Debugging
     return L
 
 ################ Dataset Postprocessing ##############
@@ -653,7 +673,7 @@ def _average_attributes(node):
     
     return avg_o, avg_dos, avg_potential, count
 
-def _process_contracted_graph(G):
+def process_contracted_graph(G):
     processed_graph = G.copy()
     for node, attr in processed_graph.nodes(data=True):
         avg_o, avg_dos, avg_potential, _ = _average_attributes(attr)
@@ -686,7 +706,7 @@ def contract_close_nodes(G, threshold):
         for u, v, l in sorted_edges:
             if l < threshold:
                 try:
-                    temp_graph = _process_contracted_graph(nx.contracted_nodes(contracted_graph, u, v, self_loops=False, copy=True))
+                    temp_graph = process_contracted_graph(nx.contracted_nodes(contracted_graph, u, v, self_loops=False, copy=True))
                     # print(temp_graph.nodes(data=True)) # Debugging
                     if temp_graph.number_of_edges() == 0:
                         return G  # Return the original graph if contraction leads to no edges
