@@ -131,6 +131,7 @@ def generate_dataset_graph(file_name_prefix, samples_per_dim=7, dim=4, c_max=1.2
             graph = contract_close_nodes(graph, threshold=contract_threshold)
             graphs.append(graph)
             labels.append(comb)
+            print(f'Partition {partition + 1} / {num_partition}: {len(labels)} / {end_index - start_index}', end='\r')
         
         labels = np.array(labels)
         
@@ -140,8 +141,11 @@ def generate_dataset_graph(file_name_prefix, samples_per_dim=7, dim=4, c_max=1.2
         # Save the subset of the dataset
         file_name = f"{file_name_prefix}_part_{partition + 1}.h5"
         with h5py.File(file_name, 'w') as f:
+            print(f'Saving partition {partition + 1} (graphs) ...'+' '*20, end='\r')
             f.create_dataset('graphs', data=np.string_(serialized_graphs))
+            print(f'Saving partition {partition + 1} (labels) ...'+' '*20, end='\r')
             f.create_dataset('labels', data=labels)
+        print(f'Partition {partition + 1} Done!'+ ' ' * 20)
 
 def load_dataset_graph(file_name_prefix, num_partition=None):
     if num_partition == None:
