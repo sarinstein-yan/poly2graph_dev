@@ -89,6 +89,7 @@ def _trace(img, p, nbs, acc, buf):
 def _parse_struc(img, nbs, acc, iso, ring):
     img = img.ravel()
     buf = np.zeros(131072, dtype=np.int64) # 2**17 = 131072
+    # buf = np.zeros(1048576, dtype=np.int64) # 2**20 = 1048576
     num = 10
     nodes = []
     for p in range(len(img)):
@@ -531,7 +532,7 @@ def _angle_between_vecs(v1, v2, origin=None):
     if l1 == 0 or l2 == 0: return 0
     else: return np.arccos(np.clip(np.dot(v1, v2)/(l1*l2), -1.0, 1.0))
 
-def LG_undirected(G, selfloops=False, create_using=None, triplet_feature=False):
+def LG_undirected(G, selfloops=False, create_using=None, triad_feature=False):
     """Returns the line graph L of the (multi)-graph G.
 
     Edges in G appear as nodes in L, represented as sorted tuples of the form
@@ -548,10 +549,8 @@ def LG_undirected(G, selfloops=False, create_using=None, triplet_feature=False):
         they are excluded.
     create_using : NetworkX graph constructor, optional (default=nx.Graph)
        Graph type to create. If graph instance, then cleared before populated.
-    L_edge_attr_dim : int
-        Number of edge attributes to be included in the line graph. If 1, only
-        the common node's attributes are included. If 3, all attributes from
-        the three nodes connected by the edges a and b are included.
+    triad_feature : bool
+        If `True`, calculate the angles between edges in the line graph.
 
     Notes
     -----
@@ -588,7 +587,7 @@ def LG_undirected(G, selfloops=False, create_using=None, triplet_feature=False):
             edge = nodes[0]
             canonical_edge = (min(edge[0], edge[1]), max(edge[0], edge[1]), edge[2])
             L.add_node(canonical_edge, **G.get_edge_data(*edge[:3]))
-  
+
         for i, a in enumerate(nodes):
             canonical_a = (min(a[0], a[1]), max(a[0], a[1]), a[2])
             L.add_node(canonical_a, **G.get_edge_data(*a[:3]))  # Transfer edge attributes to node
@@ -599,7 +598,7 @@ def LG_undirected(G, selfloops=False, create_using=None, triplet_feature=False):
                     # find the common node u. TODO: modify for self-loops
                     u = set(a[:2]).intersection(set(b[:2])).pop()
                     attr = G.nodes[u]
-                    if triplet_feature:
+                    if triad_feature:
                         # Calculate the angle between edges
                         pos_u = attr['o']
                         v = a[0] if a[0] != u else a[1]
@@ -610,7 +609,7 @@ def LG_undirected(G, selfloops=False, create_using=None, triplet_feature=False):
                                 angle.append(_angle_between_vecs(G.nodes[w]['o'], pos, origin=pos_u))
                             for pos in G.get_edge_data(*b[:3])['pts2']:
                                 angle.append(_angle_between_vecs(G.nodes[v]['o'], pos, origin=pos_u))
-                        attr['angle'] = angle
+                        attr['angle'] = np.array(angle, dtype=np.float32)
                         
                     # elif L_edge_attr_dim == 3:
                     #     # Combine attributes from all nodes connected by the edges a and b
