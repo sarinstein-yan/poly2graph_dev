@@ -141,11 +141,11 @@ def generate_dataset_graph(file_name_prefix, samples_per_dim=7, dim=4, c_max=1.2
         # Save the subset of the dataset
         file_name = f"{file_name_prefix}_part_{partition + 1}.h5"
         with h5py.File(file_name, 'w') as f:
-            print(f'Saving partition {partition + 1} (graphs) ...'+' '*20, end='\r')
+            print(f'Saving partition {partition + 1} / {num_partition} (graphs) ...'+' '*20, end='\r')
             f.create_dataset('graphs', data=np.string_(serialized_graphs))
-            print(f'Saving partition {partition + 1} (labels) ...'+' '*20, end='\r')
+            print(f'Saving partition {partition + 1} / {num_partition} (labels) ...'+' '*20, end='\r')
             f.create_dataset('labels', data=labels)
-        print(f'Partition {partition + 1} Done!'+ ' ' * 20)
+        print(f'Partition {partition + 1} / {num_partition} Done!'+ ' ' * 20)
 
 def load_dataset_graph(file_name_prefix, num_partition=None):
     if num_partition == None:
@@ -208,6 +208,95 @@ def load_dataset_graph(file_name_prefix, num_partition=None):
 
 #     graphs = [pickle.loads(graph.tobytes()) for graph in serialized_graphs]
 #     return graphs, labels
+
+
+
+def class_samples_rand(binary_mask, num_samples, c_max=1):
+    num_non_zero = np.sum(binary_mask)
+    samples = np.random.uniform(-c_max, c_max, (num_samples, num_non_zero))
+    vectors = np.zeros((num_samples, len(binary_mask)))
+    vectors[:, binary_mask == 1] = samples
+    return vectors
+
+def class_samples_step(binary_mask, num_samples, c_max=1):
+    num_non_zero = np.sum(binary_mask)
+    num_per_class = np.round(num_samples**(1/num_non_zero)).astype(int)
+    samp_col = np.linspace(-c_max, c_max, num_per_class)
+    samples = np.array(list(itertools.product(samp_col, repeat=num_non_zero)))
+    vectors = np.zeros((samples.shape[0], len(binary_mask)))
+    vectors[:, binary_mask == 1] = samples
+    return vectors
+
+def generate_coeff_balanced(samples_per_class=100, dim=6, c_max=1, method='rand'):
+    indices = []
+    for k in range(1, dim+1):  # from 1 to 6 non-zero elements
+        indices.extend(itertools.combinations(range(dim), k))
+    
+    if method == 'rand': class_gen = class_samples_rand
+    if method == 'step': class_gen = class_samples_step
+
+    all_vectors = []
+    for idx_tuple in indices:
+        binary_mask = np.zeros(dim, dtype=int)
+        binary_mask[list(idx_tuple)] = 1
+        class_vectors = class_gen(binary_mask, samples_per_class, c_max)
+        all_vectors.append(class_vectors)
+    
+    vectors = np.vstack(all_vectors)
+    if method == 'rand': vectors = np.vstack([vectors, np.zeros(dim)])
+
+    return np.unique(vectors, axis=0)
+
+def generate_dataset_graph_balanced(file_name_prefix, samples_per_class, method, dim=4, c_max=1.2, 
+                                    Elen=300, contract_threshold=14, num_partition=1):
+    # Generate all combinations
+    combinations = generate_coeff_balanced(samples_per_class=samples_per_class, dim=dim, c_max=c_max, method=method)
+
+    # Partition the combinations
+    total_combinations = len(combinations)
+    partition_size = total_combinations // num_partition
+    
+    for partition in range(num_partition):
+        start_index = partition * partition_size
+        if partition == num_partition - 1:  # Handle the last partition
+            end_index = total_combinations
+        else:
+            end_index = (partition + 1) * partition_size
+
+        partition_combinations = combinations[start_index:end_index]
+        
+        # Prepare data structures
+        graphs = []
+        labels = []
+        
+        for comb in partition_combinations:
+            if dim == 4:
+                c = [1, comb[0], comb[1], 0, comb[2], comb[3], 1]
+            if dim == 6:
+                c = [1, comb[0], comb[1], comb[2], 0, comb[3], comb[4], comb[5], 1]
+            Eauto = auto_Emax(c, emax=20, elen=64)
+            graph = Phi_graph(c, Emax=Eauto, Elen=Elen, 
+                              Potential_feature=True, DOS_feature=True, s2g_kwargs={})
+            # remove short skeletons and isolated nodes and clusters
+            graph = contract_close_nodes(graph, threshold=contract_threshold)
+            graphs.append(graph)
+            labels.append(comb)
+            print(f'Partition {partition + 1} / {num_partition}: {len(labels)} / {end_index - start_index}', end='\r')
+        
+        labels = np.array(labels)
+        
+        # Serialize graphs using pickle
+        serialized_graphs = [pickle.dumps(graph) for graph in graphs]
+        
+        # Save the subset of the dataset
+        file_name = f"{file_name_prefix}_part_{partition + 1}.h5"
+        with h5py.File(file_name, 'w') as f:
+            print(f'Saving partition {partition + 1} / {num_partition} (graphs) ...'+' '*20, end='\r')
+            f.create_dataset('graphs', data=np.string_(serialized_graphs))
+            print(f'Saving partition {partition + 1} / {num_partition} (labels) ...'+' '*20, end='\r')
+            f.create_dataset('labels', data=labels)
+        print(f'Partition {partition + 1} / {num_partition} Done!'+ ' ' * 20)
+
 
 if __name__ == '__main__':
     if not os.path.exists('./Datasets'):

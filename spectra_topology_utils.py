@@ -532,7 +532,7 @@ def _angle_between_vecs(v1, v2, origin=None):
     if l1 == 0 or l2 == 0: return 0
     else: return np.arccos(np.clip(np.dot(v1, v2)/(l1*l2), -1.0, 1.0))
 
-def LG_undirected(G, selfloops=False, create_using=None, triad_feature=False):
+def LG_undirected(G, selfloops=False, create_using=None, triplet_feature=False):
     """Returns the line graph L of the (multi)-graph G.
 
     Edges in G appear as nodes in L, represented as sorted tuples of the form
@@ -549,7 +549,7 @@ def LG_undirected(G, selfloops=False, create_using=None, triad_feature=False):
         they are excluded.
     create_using : NetworkX graph constructor, optional (default=nx.Graph)
        Graph type to create. If graph instance, then cleared before populated.
-    triad_feature : bool
+    triplet_feature : bool
         If `True`, calculate the angles between edges in the line graph.
 
     Notes
@@ -598,7 +598,7 @@ def LG_undirected(G, selfloops=False, create_using=None, triad_feature=False):
                     # find the common node u. TODO: modify for self-loops
                     u = set(a[:2]).intersection(set(b[:2])).pop()
                     attr = G.nodes[u]
-                    if triad_feature:
+                    if triplet_feature:
                         # Calculate the angle between edges
                         pos_u = attr['o']
                         v = a[0] if a[0] != u else a[1]
