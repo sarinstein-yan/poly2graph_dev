@@ -516,10 +516,71 @@ def draw_image(image, ax=None, overlay_graph=False, ax_set_kwargs={}, s2g_kwargs
         overlay_graph = to_graph(image, add_pts=True, **s2g_kwargs)
         for (s, e, key, ps) in overlay_graph.edges(keys=True, data='pts'):
             # ps = overlay_graph[s][e][key]['pts']
-            ax.plot(ps[:,1], ps[:,0], 'g-', lw=1, alpha=0.8)
+            ax.plot(ps[:,1], ps[:,0], 'b-', lw=1, alpha=0.8)
         nodes = overlay_graph.nodes()
         ps = np.array([nodes[i]['o'] for i in nodes])
         ax.plot(ps[:,1], ps[:,0], 'r.')
+
+############################################################
+
+############ diagonalizing real space Hamiltonian ##########
+
+def spectra_1band_direct_calculation(c, N, pbc=False, return_H=False):
+    '''
+    Calculate the energy spectrum of the OBC Hamiltonian for a given symmetric polynomial.
+    
+    Parameters:
+    -----------
+    c: array_like
+        Symmetric coefficients of the Hamiltonian. len(c) should be odd, 
+        with the middle one being the z^0 coefficient.
+    N: int
+        Number of sites in the chain.
+    pbc: bool, optional
+        If True, use periodic boundary conditions. Default is False.
+    return_H: bool, optional
+        If True, return the Hamiltonian matrix. If False, return the energy
+        spectra. Default is False.
+
+    Returns:
+    --------
+    E_Re: ndarray
+        Real part of the energy spectrum.
+    E_Im: ndarray
+        Imaginary part of the energy spectrum.
+    (or)
+    H: ndarray
+        Hamiltonian matrix.
+    '''
+    
+    # Ensure the coefficients list is symmetric
+    if len(c) % 2 == 0:
+        raise ValueError("The length of coefficients 'c' must be odd."
+                        " The middle coefficient is the z^0 term's.")
+    
+    mid_idx = len(c) // 2  # Middle index for the z^0 term
+    
+    # Create the Hamiltonian matrix
+    H = np.zeros((N, N), dtype=np.float64)
+    
+    # Add the hopping terms based on the coefficients
+    for i, coeff in enumerate(c):
+        if coeff != 0:
+            offset = i - mid_idx  # Determine the diagonal offset
+            H += np.eye(N, k=offset) * coeff
+            # Implement periodic boundary conditions if pbc is True
+            if pbc:
+                if offset > 0:
+                    H += np.eye(N, k=offset-N) * coeff
+                elif offset < 0:
+                    H += np.eye(N, k=N+offset) * coeff
+
+    if return_H: return H
+
+    # Compute eigenvalues of the Hamiltonian
+    E = np.linalg.eigvals(H)
+    
+    return E.real, E.imag
 
 ############################################################
 
@@ -610,6 +671,7 @@ def LG_undirected(G, selfloops=False, create_using=None, triplet_feature=False):
                             for pos in G.get_edge_data(*b[:3])['pts2']:
                                 angle.append(_angle_between_vecs(G.nodes[v]['o'], pos, origin=pos_u))
                         attr['angle'] = np.array(angle, dtype=np.float32)
+                        attr['triplet_center'] = np.mean([G.nodes[v]['o'], G.nodes[w]['o'], pos_u], axis=0)
                         
                     # elif L_edge_attr_dim == 3:
                     #     # Combine attributes from all nodes connected by the edges a and b
@@ -641,7 +703,7 @@ def hash_labels(labels, n, dim=6):
     return reassigned_hash_value
 
 def _average_attributes(node):
-    # Check if 'o' and 'dos' attributes exist, otherwise initialize them
+    # Check if attributes exist, otherwise initialize them
     if all(key in node for key in ['o', 'dos', 'potential']):
         sum_o = np.array(node['o'], dtype=float)
         sum_dos = node['dos']; sum_potential = node['potential']
@@ -672,6 +734,8 @@ def _average_attributes(node):
     
     return avg_o, avg_dos, avg_potential, count
 
+# TODO: bug, if 'dos' or 'potential' don't exist, contraction will destroy 'o'
+# TODO: modify the function to handle any set of attributes
 def process_contracted_graph(G):
     processed_graph = G.copy()
     for node, attr in processed_graph.nodes(data=True):
@@ -717,37 +781,3 @@ def contract_close_nodes(G, threshold):
 
 
 #################### Experimental ####################
-
-def OBC_spectra_degree7_1band(c, N, pbc=False):
-    '''
-    Calculate the energy spectrum of the OBC Hamiltonian
-    
-    Parameters:
-    -----------
-    c: array_like
-        Coefficients of the Hamiltonian. Should be symmetric, 
-        len(c) should be 7, the middle one is z^0 coefficient.
-    N: int
-        Number of sites in the chain.
-    pbc: bool, optional
-        If True, use periodic boundary condition. Default is False.
-
-    Returns:
-    --------
-    E_Re: ndarray
-        Real part of the energy spectrum
-    E_Im: ndarray
-        Imaginary part of the energy spectrum
-    '''
-    H = np.eye(N, k=-3) * c[0]
-    H += np.eye(N, k=-2) * c[1]
-    H += np.eye(N, k=-1) * c[2]
-    H += np.eye(N) * c[3]
-    H += np.eye(N, k=1) * c[4]
-    H += np.eye(N, k=2) * c[5]
-    H += np.eye(N, k=3) * c[6]
-    if pbc:
-        H[-3:, :3] = H[:3, 3:6]
-        H[:3, -3:] = H[3:6, :3]
-    E = np.linalg.eigvals(H)
-    return E.real, E.imag
