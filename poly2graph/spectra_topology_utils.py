@@ -3,11 +3,14 @@ from numba import njit
 import networkx as nx
 import tensorflow as tf
 import torch
+import cv2
 from skimage.filters import laplace, gaussian
 from skimage.filters import threshold_mean, threshold_triangle, threshold_li
 from skimage.morphology import skeletonize
 # from skimage.morphology import thin, medial_axis
 import matplotlib.pyplot as plt
+
+from typing import Union
 
 #################### skeleton_graph ########################
 
@@ -344,7 +347,7 @@ def poly_roots_torch_batch(c):
     eigvals = torch.linalg.eigvals(mat)
     return eigvals
 
-def _normalize_image(image):
+def normalize_image(image):
     """
     Normalize an image to the range [0, 1].
 
@@ -404,7 +407,7 @@ def PosLoG(image, sigmas=[0,1], ksizes=[3],
     if black_ridges:
         image = -image
 
-    image = _normalize_image(image)
+    image = normalize_image(image)
 
     if power_scaling is not None:
         image = image**power_scaling
@@ -412,7 +415,7 @@ def PosLoG(image, sigmas=[0,1], ksizes=[3],
     filtered_max = np.zeros_like(image)
     for sigma in sigmas:
         for ksize in ksizes:
-            gauss = gaussian(image, sigma=sigma)
+            gauss = gaussian(image, sigma=sigma) if sigma > 0 else image
             lap = laplace(gauss, ksize=ksize)
             # remove negative curvature
             pos = np.maximum(lap, 0)
@@ -423,7 +426,12 @@ def PosLoG(image, sigmas=[0,1], ksizes=[3],
             
     return filtered_max
 
-def Phi_image(c, Emax=4, Elen=400, method=None):
+def Phi_image(
+    c: np.ndarray, 
+    Emax: Union[int, float, list, np.ndarray],
+    Elen: int = 400,
+    method: Union[None, int, str] = None
+) -> np.ndarray:
     '''
     Generate the spectral potential landscape Phi(E) for a given polynomial.
     1-band only.
@@ -434,7 +442,7 @@ def Phi_image(c, Emax=4, Elen=400, method=None):
         Coefficients of the polynomial. Should be symmetric, 
         len(c) should be odd, the middle one is z^0 coefficient.
     Emax : float, optional
-        Maximum energy range for the landscape. Default is 2.
+        Maximum energy range for the landscape. 
     Elen : int, optional
         Number of points in the energy range. Default is 400.
     method : int or str, optional
@@ -451,27 +459,35 @@ def Phi_image(c, Emax=4, Elen=400, method=None):
         The 2d image of the spectral potential landscape Phi(E).
     '''
 
-    E_range = np.linspace(-Emax, Emax, Elen)
-    E_pairs = np.meshgrid(E_range, E_range)
+    if not isinstance(c, np.ndarray): c = np.array(c)
+    if isinstance(Emax, (int, float)):
+        E_re_min, E_re_max, E_im_min, E_im_max = -Emax, Emax, -Emax, Emax
+    else:
+        E_re_min, E_re_max, E_im_min, E_im_max = Emax
+    E_re_ls = np.linspace(E_re_min, E_re_max, Elen)
+    E_im_ls = np.linspace(E_im_min, E_im_max, Elen)
+    E_pairs = np.meshgrid(E_re_ls, E_im_ls)
     E_complex = E_pairs[0] + 1j*E_pairs[1]
 
-    p0 = (len(c)-1)//2
-    cl = np.trim_zeros(c, 'f')
-    E_pos = p0 - (len(c) - len(cl))
+    c_nonzero = c != 0
+    l0 = np.argmax(c_nonzero) # first non-zero index
+    m0 = len(c_nonzero)//2 # middle index
+    r0 = np.argmax(c_nonzero.cumsum()) # last non-zero index
+    z0 = m0 - l0 # position of z^0 after trimming zeros
+    q = r0 - m0 # largest power of z
 
-    c = np.trim_zeros(c)
-    poly_len = len(c)
-    q = poly_len - E_pos - 1 # p = E_pos
-    coeff = np.zeros((E_complex.size, poly_len), dtype=np.complex64)
-    for i in range(poly_len):
+    c = c[l0:r0+1] # trim the zeros
+    # create the coefficients
+    coeff = np.zeros((E_complex.size, len(c)), dtype=np.complex64)
+    for i in range(len(c)):
         coeff[:, i] = c[i]
-    coeff[:, E_pos] -= E_complex.ravel()
+    coeff[:, z0] -= E_complex.ravel()
     z = poly_roots_tf_batch(tf.constant(coeff, dtype=tf.complex64)).numpy()
     
     if method is None or method == 1 or method == 'spectral':
         # Method 1: spectral potential landscape
         betas = np.sort(np.abs(z), axis=1)[:, -q:]
-        phi = np.log(np.abs(c[-1])) + np.sum(np.log(betas), axis=1)
+        phi = np.log(np.abs(coeff[:, -1])) + np.sum(np.log(betas), axis=1)
     elif method == 2 or method == 'diff_log':
         # Method 2: kappa derived from least 2 |z|'s
         kappas = -np.log(np.sort(np.abs(z), axis=1))
@@ -482,13 +498,13 @@ def Phi_image(c, Emax=4, Elen=400, method=None):
         phi = np.log(betas[:, 1]-betas[:, 0])
     return phi.reshape(E_complex.shape)
 
-def binarized_Phi_image(c, Emax=4, Elen=400, thresholder=threshold_mean):
+def binarized_Phi_image(c, Emax, Elen=400, thresholder=threshold_mean):
     phi = Phi_image(c, Emax, Elen)
     ridge = PosLoG(phi)
     binary = ridge > thresholder(ridge)
     return binary
 
-def Phi_graph(c, Emax=4, Elen=400, thresholder=threshold_mean, 
+def Phi_graph(c, Emax, Elen=400, thresholder=threshold_mean, 
               Potential_feature=True, DOS_feature=True, s2g_kwargs={}):
     phi = Phi_image(c, Emax, Elen)
     ridge = PosLoG(phi)
