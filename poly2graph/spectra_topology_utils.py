@@ -426,6 +426,46 @@ def PosLoG(image, sigmas=[0,1], ksizes=[3],
             
     return filtered_max
 
+def _trim_c(
+    c: np.ndarray,
+    is_one_band: bool
+) -> tuple:
+    c_nonzeros = c != 0
+    if not is_one_band:
+        c_nonzeros = np.max(c_nonzeros, axis=0)
+    l0 = np.argmax(c_nonzeros)  # first non-zero index
+    m0 = len(c_nonzeros) // 2  # middle index
+    r0 = np.argmax(c_nonzeros.cumsum())  # last non-zero index
+    z0 = m0 - l0  # position of z^0 after trimming zeros
+    q = r0 - m0  # largest power of z
+    c_trimmed = c[..., l0:r0 + 1] # trim the zeros
+    # length = r0 - l0 + 1 # length of the pure polynomial
+    if z0 <= 0 or q <= 0:
+        raise ValueError("Unphysical polynomial coefficients. Ensure both negative and positive powers are present.")
+    return c_trimmed, z0, q
+
+@njit
+def _coeff_one_band(
+    c: np.ndarray,
+    E_complex: np.ndarray,
+    z0: int
+) -> np.ndarray:
+    coeff = np.zeros((E_complex.size, len(c)), dtype=np.complex64)
+    for i in range(len(c)):
+        coeff[:, i] = c[i]
+    coeff[:, z0] -= E_complex.ravel()
+    return coeff
+
+def _coeff_multi_band(
+    c_grid: np.ndarray,
+    E_complex: np.ndarray,
+) -> np.ndarray:
+    E_pow_len = c_grid.shape[0] # number of E powers
+    powers = np.arange(E_pow_len) - E_pow_len//2 # exponents of E
+    E_powers = E_complex[..., np.newaxis] ** powers # shape: (Elen, Elen, E_pow_len)
+    coeff_grid = np.einsum('ijk,kl->ijl', E_powers, c_grid) # shape: (Elen, Elen, i_len)
+    return coeff_grid.reshape(-1, coeff_grid.shape[-1])
+
 def Phi_image(
     c: np.ndarray, 
     Emax: Union[int, float, list, np.ndarray],
@@ -433,33 +473,49 @@ def Phi_image(
     method: Union[None, int, str] = None
 ) -> np.ndarray:
     '''
-    Generate the spectral potential landscape Phi(E) for a given polynomial.
-    1-band only.
+    Generate the spectral potential landscape Phi(E) for a given multi-band polynomial.
 
     Parameters
     ----------
-    c : array_like
-        Coefficients of the polynomial. Should be symmetric, 
-        len(c) should be odd, the middle one is z^0 coefficient.
-    Emax : float, optional
-        Maximum energy range for the landscape. 
+    c : ndarray
+        Coefficient matrix of the polynomial. The element c[j_max//2, i_max//2] represents 
+        the coefficient of (z^0 E^j). The shape of c in the second dimension (z powers) 
+        should be odd, with the middle term corresponding to z^0 E^0.
+    Emax : float or list, optional
+        Maximum energy range for the landscape. If a float is provided, the range is 
+        [-Emax, Emax] for both real and imaginary parts. If a list, it should contain 
+        [E_real_min, E_real_max, E_imag_min, E_imag_max].
     Elen : int, optional
         Number of points in the energy range. Default is 400.
     method : int or str, optional
         Method to calculate the TDL spectra:
-        - 1 or 'spectral' : spectral potential landscape
-        - 2 or 'diff_log' : difference of kappas corresponding
-                            to the least 2 |z|'s
-        - 3 or 'log_diff' : log difference of the least 2 |z|'s
+            - 1 or 'spectral' : spectral potential landscape
+            - 2 or 'diff_log' : difference of kappas corresponding
+                                to the least 2 |z|'s
+            - 3 or 'log_diff' : log difference of the least 2 |z|'s
         Default is None.
 
     Returns
     -------
     phi : ndarray
-        The 2d image of the spectral potential landscape Phi(E).
+        The 2D image of the spectral potential landscape Phi(E).
+
+    Examples
+    --------
+    One-band polynomial:
+    >>> c = np.array([1, .4, 1, .1, 0, 0, .2, -.4, 1])
+    >>> phi = Phi_image(c, Emax=3.5, Elen=400)
+
+    Multi-band polynomial (Hatano-Nelson model):
+    >>> c = np.array([[0,  0, 0],
+                      [.5, 0, 1],
+                      [0, -1, 0]])
+    >>> phi = Phi_image(c, Emax=2, Elen=400)
     '''
 
     if not isinstance(c, np.ndarray): c = np.array(c)
+    is_one_band = len(c.shape) == 1
+
     if isinstance(Emax, (int, float)):
         E_re_min, E_re_max, E_im_min, E_im_max = -Emax, Emax, -Emax, Emax
     else:
@@ -469,33 +525,31 @@ def Phi_image(
     E_pairs = np.meshgrid(E_re_ls, E_im_ls)
     E_complex = E_pairs[0] + 1j*E_pairs[1]
 
-    c_nonzero = c != 0
-    l0 = np.argmax(c_nonzero) # first non-zero index
-    m0 = len(c_nonzero)//2 # middle index
-    r0 = np.argmax(c_nonzero.cumsum()) # last non-zero index
-    z0 = m0 - l0 # position of z^0 after trimming zeros
-    q = r0 - m0 # largest power of z
+    c_trimmed, z0, q = _trim_c(c, is_one_band)
+    if is_one_band:
+        coeff = _coeff_one_band(c_trimmed, E_complex, z0)
+    else:
+        coeff = _coeff_multi_band(c_trimmed, E_complex)
 
-    c = c[l0:r0+1] # trim the zeros
-    # create the coefficients
-    coeff = np.zeros((E_complex.size, len(c)), dtype=np.complex64)
-    for i in range(len(c)):
-        coeff[:, i] = c[i]
-    coeff[:, z0] -= E_complex.ravel()
-    z = poly_roots_tf_batch(tf.constant(coeff, dtype=tf.complex64)).numpy()
-    
+    # Compute roots in z for each E
+    coeff_tf = tf.constant(coeff, dtype=tf.complex64)
+    z = poly_roots_tf_batch(coeff_tf).numpy()  # Shape: (E_complex.size, degree)
+
+    # Proceed to compute phi based on the selected method
     if method is None or method == 1 or method == 'spectral':
         # Method 1: spectral potential landscape
-        betas = np.sort(np.abs(z), axis=1)[:, -q:]
-        phi = np.log(np.abs(coeff[:, -1])) + np.sum(np.log(betas), axis=1)
+        betas_q = np.sort(np.abs(z), axis=-1)[:, -q:]  # q largest |z|'s
+        phi = np.log(np.abs(coeff[:, -1])) + np.sum(np.log(betas_q), axis=-1)
     elif method == 2 or method == 'diff_log':
-        # Method 2: kappa derived from least 2 |z|'s
-        kappas = -np.log(np.sort(np.abs(z), axis=1))
+        # Method 2: difference of kappas corresponding to the least 2 |z|'s
+        kappas = -np.log(np.sort(np.abs(z), axis=-1))
         phi = kappas[:, 0] - kappas[:, 1]
     elif method == 3 or method == 'log_diff':
-        # Method 3: log difference of least 2 |z|'s
-        betas = np.sort(np.abs(z), axis=1)
-        phi = np.log(betas[:, 1]-betas[:, 0])
+        # Method 3: log difference of the least 2 |z|'s
+        betas = np.sort(np.abs(z), axis=-1)
+        phi = np.log(betas[:, 1] - betas[:, 0])
+    else:
+        raise ValueError("Invalid method specified. Choose 1, 2, or 3.")
     return phi.reshape(E_complex.shape)
 
 def binarized_Phi_image(c, Emax, Elen=400, thresholder=threshold_mean):
