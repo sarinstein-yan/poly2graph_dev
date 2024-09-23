@@ -1,8 +1,10 @@
 import torch
 import torch.nn.functional as F
-from torch import Tensor
 from torch.nn import Linear, GRUCell
 from torch_geometric.nn import aggr, GATv2Conv, TransformerConv, SAGPooling, MLP
+
+from torch import Tensor
+# from typing import Optional
 
 class AGnLConv(torch.nn.Module):
     def __init__(
@@ -11,6 +13,7 @@ class AGnLConv(torch.nn.Module):
         hidden_channels: int,
         num_layers: int,
         num_heads: int = 4,
+        edge_dim: int = -1,
         dropout: float = 0.0,
         conv_kwargs: dict = {},
     ):
@@ -20,15 +23,16 @@ class AGnLConv(torch.nn.Module):
         self.hidden_channels = hidden_channels
         self.num_layers = num_layers
         self.num_heads = num_heads
+        self.edge_dim = edge_dim
         self.dropout = dropout
 
         if num_heads == 1:
-            self.conv1 = TransformerConv(in_channels, hidden_channels, edge_dim=-1,
+            self.conv1 = TransformerConv(in_channels, hidden_channels, edge_dim=edge_dim,
                                    dropout=dropout, **conv_kwargs)
             self.gru1 = GRUCell(hidden_channels, in_channels)
             self.lin1 = Linear(in_channels, hidden_channels)
         elif num_heads >= 2:
-            self.conv1 = TransformerConv(in_channels, hidden_channels//2, edge_dim=-1,
+            self.conv1 = TransformerConv(in_channels, hidden_channels//2, edge_dim=edge_dim,
                                    heads=num_heads, dropout=dropout, **conv_kwargs)
             self.lin0 = Linear(in_channels, hidden_channels*(num_heads//2))
             self.gru1 = GRUCell((hidden_channels//2)*num_heads, hidden_channels*(num_heads//2))
@@ -37,8 +41,8 @@ class AGnLConv(torch.nn.Module):
         self.convs = torch.nn.ModuleList()
         self.grus = torch.nn.ModuleList()
         for _ in range(num_layers - 1):
-            self.convs.append(GATv2Conv(hidden_channels, hidden_channels, edge_dim=-1,
-                                              dropout=dropout, **conv_kwargs))
+            self.convs.append(GATv2Conv(hidden_channels, hidden_channels, edge_dim=edge_dim,
+                                        add_self_loops=False, dropout=dropout, **conv_kwargs))
             self.grus.append(GRUCell(hidden_channels, hidden_channels))
 
         self.reset_parameters()
@@ -84,9 +88,9 @@ class AGnLConv(torch.nn.Module):
                 f'dropout={self.dropout})'
                 f')')
 
-class GnLTransformer(torch.nn.Module): # Sort Pooling
+class GnLTransformer(torch.nn.Module):
     def __init__(self, dim_in_G, dim_in_L, dim_h_conv, dim_h_lin, dim_out,
-                 num_layer_conv, num_layer_lin, num_heads=8,
+                 num_layer_conv, num_layer_lin, num_heads=4,
                  pool_k_G=20, pool_k_L=20, dropout=0.):
         super().__init__()
         # torch.manual_seed(42)
