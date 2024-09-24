@@ -29,7 +29,7 @@ if __name__ == '__main__':
         version='0.0.1',
         author='Xianquan (Sarinstein) Yan',
         author_email='xianquanyan@gmail.com',
-        url='https://github.com/sarinstein-yan/spectral-topology'
+        url='https://github.com/sarinstein-yan/spectral-topology',
         description='Automated Non-Hermitian Spectral Graph Extraction',
         long_description=long_description,
         long_description_content_type='text/markdown',
@@ -45,9 +45,10 @@ if __name__ == '__main__':
             'torchmetrics'
         ],
         classifiers=[
-            "Development Status :: 1 - Beta",
+            "Development Status :: 2 - Pre-Alpha",
             "License :: OSI Approved :: MIT License",
             "Programming Language :: Python :: 3 :: Only",
-            "Programming Language :: Python :: 3.9"
+            "Programming Language :: Python :: 3.9",
+            "Environment :: GPU :: NVIDIA CUDA"
         ]
     )

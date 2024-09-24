@@ -1,3 +1,3 @@
-# spectral-topology
+# Poly2Graph
 
-Utensils for spectral topology project. 
+Poly2Graph is a Python package for non-Hermitian spectral graph.
