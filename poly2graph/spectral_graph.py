@@ -483,8 +483,8 @@ def Phi_graph(
     ridge = PosGoL(phi, **PosGoL_kwargs)
     binary = ridge > thresholder(ridge)
     ske = skeletonize(binary, method='lee')
-    Potential_image = phi if Potential_feature else None
-    DOS_image = ridge if DOS_feature else None
+    Potential_image = phi.astype(np.float32) if Potential_feature else None
+    DOS_image = ridge.astype(np.float32) if DOS_feature else None
     graph = skeleton2graph(ske, Potential_image=Potential_image, DOS_image=DOS_image, **s2g_kwargs)
     if contract_threshold is not None:
         graph = contract_close_nodes(graph, contract_threshold)
@@ -508,7 +508,7 @@ def Phi_graph(
             if 'pts' in edge[2]:
                 edge[2]['pts'] = (((edge[2]['pts']-_center)*scale + center)*128).astype(np.float32)
 
-    attrs = {'polynomial_coeff': c, 'Emax': Emax, 'Elen': Elen}
+    attrs = {'polynomial_coeff': c.astype(np.float32), 'Emax': Emax, 'Elen': Elen}
     graph.graph.update(attrs)
 
     return graph

@@ -26,7 +26,7 @@ with open("README.md", 'r') as f:
 if __name__ == '__main__':
     setup(
         name='poly2graph',
-        version='0.0.1',
+        version='0.0.3',
         author='Xianquan (Sarinstein) Yan',
         author_email='xianquanyan@gmail.com',
         url='https://github.com/sarinstein-yan/spectral-topology',
@@ -42,7 +42,8 @@ if __name__ == '__main__':
             'numba',
             'networkx',
             'scikit-image',
-            'torchmetrics'
+            'torchmetrics',
+            'gdown'
         ],
         classifiers=[
             "Development Status :: 2 - Pre-Alpha",

@@ -18,7 +18,8 @@ draw_image)
 
 from . import dataset
 
-__all__ = ['angle_between_vecs',
+__all__ = [
+'angle_between_vecs',
 'LG_undirected',
 
 'poly_roots_tf_batch',
