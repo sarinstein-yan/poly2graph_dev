@@ -1,8 +1,8 @@
 # from . import poly2graph
-from .poly2graph import *
+from .poly_to_graph import *
 
 from .gnl_transformer import *
 
-__version__ = '0.0.1'
+__version__ = '0.0.3'
 
-__all__ = poly2graph.__all__ + gnl_transformer.__all__
+__all__ = poly_to_graph.__all__ + gnl_transformer.__all__
