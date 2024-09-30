@@ -1,7 +1,7 @@
 from .post import hash_labels
 
-from .sampling_1band import (generate_coefficients, 
-                             generate_coefficients_balanced, 
+from .sampling_1band import (generate_coefficients,
+                             generate_coefficients_balanced,
                              generate_dataset, 
                              load_dataset)
 
