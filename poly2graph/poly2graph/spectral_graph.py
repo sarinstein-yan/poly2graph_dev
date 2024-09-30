@@ -500,6 +500,7 @@ def Phi_graph(
 
         for node in graph.nodes(data=True):
             if 'o' in node[1]:
+                # to float32 for compatibility with torch_geometric
                 node[1]['o'] = (((node[1]['o']-_center)*scale + center)*128).astype(np.float32)
         
         for edge in graph.edges(data=True):

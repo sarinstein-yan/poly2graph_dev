@@ -5,7 +5,9 @@ from .sampling_1band import (generate_coefficients,
                              generate_dataset, 
                              load_dataset)
 
-from .in_memory_dataset import Dataset_nHSG, Dataset_nHSG_Paired
+from .in_memory_dataset import (Dataset_nHSG,
+                                Dataset_nHSG_Paired,
+                                Dataset_nHSG_Hetero)
 
 __all__ = ['generate_coefficients',
 'generate_coefficients_balanced',
@@ -13,4 +15,5 @@ __all__ = ['generate_coefficients',
 'load_dataset',
 'hash_labels',
 'Dataset_nHSG',
-'Dataset_nHSG_Paired']
+'Dataset_nHSG_Paired',
+'Dataset_nHSG_Hetero']
