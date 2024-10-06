@@ -14,7 +14,7 @@ from typing import Union, Sequence, Optional, Callable, Any, Iterable, TypeVar
 nxGraph = TypeVar('nxGraph', nx.Graph, nx.MultiGraph, nx.DiGraph, nx.MultiDiGraph)
 
 
-@njit
+@njit #TODO support multi-band polynomials
 def auto_Emaxes(
     c: Iterable,
     N: Optional[int] = 40,

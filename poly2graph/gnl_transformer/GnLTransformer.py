@@ -158,58 +158,7 @@ class GnLTransformer_Paired(torch.nn.Module):
 
         return x
 
-class GnLTransformer_Hetero(torch.nn.Module):
-    def __init__(self,
-        dim_in_G: int,
-        dim_in_L: int,
-        dim_h_conv: int,
-        dim_h_lin: int,
-        dim_out: int,
-        num_layer_conv: int, 
-        num_layer_lin: int,
-        num_heads: Optional[int] = 4,
-        pool_k_G: Optional[int] = 20,
-        pool_k_L: Optional[int] = 20,
-        dropout: Optional[float] = 0.,
-    ):
-        super().__init__()
-        # torch.manual_seed(42)
-        self.conv_G = AttentiveGnLConv(in_channels=dim_in_G,
-                                hidden_channels=dim_h_conv,
-                                num_layers=num_layer_conv,
-                                num_heads=num_heads,
-                                dropout=dropout)
-        self.conv_L = AttentiveGnLConv(in_channels=dim_in_L,
-                                hidden_channels=dim_h_conv,
-                                num_layers=num_layer_conv,
-                                num_heads=num_heads,
-                                dropout=dropout)
-
-        self.pool_G = SAGPooling(dim_h_conv, ratio=pool_k_G)#, GNN=GATv2Conv)
-        self.pool_L = SAGPooling(dim_h_conv, ratio=pool_k_L)#, GNN=GATv2Conv)
-        self.sort_G = aggr.SortAggregation(k=pool_k_G)
-        self.sort_L = aggr.SortAggregation(k=pool_k_L)
-        self.pool_k_G = pool_k_G; self.pool_k_L = pool_k_L
-        self.dropout = dropout
-
-        self.pool_G.explain = False; self.pool_L.explain = False
-        self.sort_G.explain = False; self.sort_L.explain = False
-
-        self.mlp = MLP(in_channels=dim_h_conv*(pool_k_G+pool_k_L),
-                       hidden_channels=dim_h_lin,
-                       out_channels=dim_out,
-                       num_layers=num_layer_lin,
-                       dropout=dropout)
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        self.conv_G.reset_parameters()
-        self.conv_L.reset_parameters()
-        self.pool_G.reset_parameters()
-        self.pool_L.reset_parameters()
-        self.mlp.reset_parameters()
-
+class GnLTransformer_Hetero(GnLTransformer_Paired):
     def forward(self, x_dict, edge_index_dict, edge_attr_dict, batch_dict):
         x_G, edge_index_G, edge_attr_G, batch_G = x_dict['node'], edge_index_dict[('node', 'n2n', 'node')], edge_attr_dict[('node', 'n2n', 'node')], batch_dict['node']
         x_L, edge_index_L, edge_attr_L, batch_L = x_dict['edge'], edge_index_dict[('edge', 'e2e', 'edge')], edge_attr_dict[('edge', 'e2e', 'edge')], batch_dict['edge']
