@@ -8,6 +8,7 @@ from .post import hash_labels
 from .sampling_1band import load_dataset
 from gdown import download_folder
 from tqdm import tqdm
+import zipfile, os
 
 # helper functions
 
@@ -60,7 +61,7 @@ class Dataset_nHSG(InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        return ['dataset_graph_dim6.h5']
+        return ['dataset_graph_dim6.zip']
 
     @property
     def processed_file_names(self):
@@ -76,7 +77,11 @@ class Dataset_nHSG(InMemoryDataset):
         download_folder(id=root_id, output=self.root, **gdown_kwargs)
 
     def process(self):
-        nx_Gs, labels = load_dataset(self.raw_paths[0][:-3]) # strip ".h5" extension
+        extracted_file_path = os.path.join(self.raw_dir, 'dataset_graph_dim6.h5')
+        if not os.path.exists(extracted_file_path):
+            with zipfile.ZipFile(self.raw_paths[0], 'r') as zip_ref:
+                zip_ref.extractall(self.raw_dir)
+        nx_Gs, labels = load_dataset(extracted_file_path)
         labels_signs = np.where(np.abs(labels) < 1e-6, 0, 1)
         hashed_labels = hash_labels(labels_signs, 2)
 
@@ -88,7 +93,7 @@ class Dataset_nHSG(InMemoryDataset):
             pyg_L = from_networkx(nx_L, group_node_attrs=['weight', 'pts5'], group_edge_attrs=['triplet_center', 'angle'])
             # add graph-level attributes to pyg_G
             G_list.append(Data(x=pyg_G.x,
-                               pos=pyg_G.pos,
+                               pos=pyg_G.pos.flip(-1),
                                edge_index=pyg_G.edge_index,
                                edge_attr=pyg_G.edge_attr,
                                y=torch.tensor([hashed_labels[i]], dtype=torch.long),
@@ -97,7 +102,7 @@ class Dataset_nHSG(InMemoryDataset):
                                full_coeffs=pyg_G.polynomial_coeff,
                                Emax=pyg_G.Emax))
             L_list.append(Data(x=pyg_L.x,
-                               pos=pyg_L.pos,
+                               pos=pyg_L.pos.flip(-1),
                                edge_index=pyg_L.edge_index,
                                edge_attr=pyg_L.edge_attr))
             
@@ -140,7 +145,7 @@ class Dataset_nHSG_Hetero(InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        return ['dataset_graph_dim6.h5']
+        return ['dataset_graph_dim6.zip']
 
     @property
     def processed_file_names(self):
@@ -151,7 +156,11 @@ class Dataset_nHSG_Hetero(InMemoryDataset):
         download_folder(id=root_id, output=self.root, **gdown_kwargs)
 
     def process(self):
-        nx_Gs, labels = load_dataset(self.raw_paths[0][:-3]) # strip ".h5" extension
+        extracted_file_path = os.path.join(self.raw_dir, 'dataset_graph_dim6.h5')
+        if not os.path.exists(extracted_file_path):
+            with zipfile.ZipFile(self.raw_paths[0], 'r') as zip_ref:
+                zip_ref.extractall(self.raw_dir)
+        nx_Gs, labels = load_dataset(extracted_file_path)
         labels_signs = np.where(np.abs(labels) < 1e-6, 0, 1)
         hashed_labels = hash_labels(labels_signs, 2)
 
@@ -168,7 +177,7 @@ class Dataset_nHSG_Hetero(InMemoryDataset):
 
                 'node': {
                     'x': pyg_G.x,
-                    'pos': pyg_G.pos
+                    'pos': pyg_G.pos.flip(-1)
                 },
                 ('node', 'n2n', 'node'): {
                     'edge_index': pyg_G.edge_index,
@@ -177,7 +186,7 @@ class Dataset_nHSG_Hetero(InMemoryDataset):
 
                 'edge': {
                     'x': pyg_L.x,
-                    'pos': pyg_L.pos
+                    'pos': pyg_L.pos.flip(-1)
                 },
                 ('edge', 'e2e', 'edge'): {
                     'edge_index': pyg_L.edge_index,

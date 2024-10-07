@@ -117,7 +117,10 @@ def generate_dataset(
 
 def load_dataset(file_name_prefix, num_partition=None):
     if num_partition == None:
-        file_name = f"{file_name_prefix}.h5"
+        if file_name_prefix[-3:] != '.h5':
+            file_name = f"{file_name_prefix}.h5"
+        else: file_name = file_name_prefix
+        
         with h5py.File(file_name, 'r') as f:
             serialized_graphs = f['graphs'][:]
             labels = f['labels'][:]
