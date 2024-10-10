@@ -123,14 +123,22 @@ class GnLTransformer_Paired(torch.nn.Module):
         self.pool_L = SAGPooling(dim_h_conv, ratio=pool_k_L)#, GNN=GATv2Conv)
         self.sort_G = aggr.SortAggregation(k=pool_k_G)
         self.sort_L = aggr.SortAggregation(k=pool_k_L)
-        self.pool_k_G = pool_k_G; self.pool_k_L = pool_k_L
-        self.dropout = dropout
 
         self.mlp = MLP(in_channels=dim_h_conv*(pool_k_G+pool_k_L),
                        hidden_channels=dim_h_lin,
                        out_channels=dim_out,
                        num_layers=num_layer_lin,
                        dropout=dropout)
+
+        self.dim_h_conv = dim_h_conv
+        self.dim_h_lin = dim_h_lin
+        self.dim_out = dim_out
+        self.num_layer_conv = num_layer_conv
+        self.num_layer_lin = num_layer_lin
+        self.num_heads = num_heads
+        self.pool_k_G = pool_k_G
+        self.pool_k_L = pool_k_L
+        self.dropout = dropout
 
         self.reset_parameters()
 
@@ -176,3 +184,79 @@ class GnLTransformer_Hetero(GnLTransformer_Paired):
         x = self.mlp(x)
 
         return x
+
+# X... classes for visualization and explanation
+class XAGnLConv(AttentiveGnLConv):
+    def forward(self, x, edge_index, edge_attr):
+        vis_data = {}
+        if self.num_heads == 1:
+            h, att = self.conv1(x, edge_index, edge_attr, 
+                                return_attention_weights=True)
+            # vis_data['att_eid_conv1'] = att[0].detach().cpu().numpy()
+            vis_data['att_w_conv1'] = att[1].detach().cpu().numpy()
+            h = F.elu_(h)
+            vis_data['x_conv1'] = h.clone().squeeze().detach().cpu().numpy()
+            h = F.dropout(h, p=self.dropout, training=self.training)
+            x = self.gru1(h, x).relu_()
+            x = self.lin1(x)
+            x = F.leaky_relu_(x)
+            vis_data['x_gru1'] = x.clone().squeeze().detach().cpu().numpy()
+        elif self.num_heads >= 2:
+            h, att = self.conv1(x, edge_index, edge_attr,
+                                return_attention_weights=True)
+            # vis_data['att_eid_conv1'] = att[0].detach().cpu().numpy()
+            vis_data['att_w_conv1'] = att[1].detach().cpu().numpy()
+            h = F.elu_(h)
+            vis_data['x_conv1'] = h.clone().squeeze().detach().cpu().numpy()
+            h = F.dropout(h, p=self.dropout, training=self.training)
+            x = F.leaky_relu_(self.lin0(x))
+            x = self.gru1(h, x).relu_()
+            x = self.lin1(x)
+            x = F.leaky_relu_(x)
+            vis_data['x_gru1'] = x.clone().squeeze().detach().cpu().numpy()
+        g = [x]
+
+        for i, (conv, gru) in enumerate(zip(self.convs, self.grus)):
+            h, att = conv(x, edge_index, edge_attr, 
+                          return_attention_weights=True)
+            # vis_data[f'att_eid_conv{i+2}'] = att[0].detach().cpu().numpy()
+            vis_data[f'att_w_conv{i+2}'] = att[1].detach().cpu().numpy()
+            h = F.elu(h)
+            vis_data[f'x_conv{i+2}'] = h.clone().squeeze().detach().cpu().numpy()
+            h = F.dropout(h, p=self.dropout, training=self.training)
+            x = gru(h, x)
+            x = F.relu(x)
+            vis_data[f'x_gru{i+2}'] = x.clone().squeeze().detach().cpu().numpy()
+            g.append(x)
+            # sum hierarchical node embeddings
+        g = sum(g)
+        return g, vis_data
+
+class XGnLTransformer_Paired(GnLTransformer_Paired):
+    def __init__(self, dim_in_G, dim_in_L, dim_h_conv, dim_h_lin, dim_out, 
+            num_layer_conv, num_layer_lin, num_heads, pool_k_G, pool_k_L, dropout=0.):
+        super().__init__(dim_in_G, dim_in_L, dim_h_conv, dim_h_lin, dim_out, 
+                num_layer_conv, num_layer_lin, num_heads, pool_k_G, pool_k_L, dropout)
+        self.conv_G = XAGnLConv(dim_in_G, dim_h_conv, num_layer_conv, num_heads, dropout)
+        self.conv_L = XAGnLConv(dim_in_L, dim_h_conv, num_layer_conv, num_heads, dropout)
+    def forward(self, data_G, data_L):
+        vis_data = {}
+        x_G, edge_index_G, edge_attr_G, batch_G = data_G.x, data_G.edge_index, data_G.edge_attr, data_G.batch
+        x_L, edge_index_L, edge_attr_L, batch_L = data_L.x, data_L.edge_index, data_L.edge_attr, data_L.batch
+        x_G, vis_data_G = self.conv_G(x_G, edge_index_G, edge_attr_G)
+        x_L, vis_data_L = self.conv_L(x_L, edge_index_L, edge_attr_L)
+        vis_data['G_node'] = vis_data_G
+        vis_data['L_node'] = vis_data_L
+
+        x_G, _, _, batch_G, _, _ = self.pool_G(x_G, edge_index_G, edge_attr_G, batch_G)
+        x_L, _, _, batch_L, _, _ = self.pool_L(x_L, edge_index_L, edge_attr_L, batch_L)
+
+        x_G = self.sort_G(x_G, batch_G)
+        x_L = self.sort_L(x_L, batch_L)
+        vis_data['G_graph1'] = x_G.clone().squeeze().detach().cpu().numpy()
+        vis_data['L_graph1'] = x_L.clone().squeeze().detach().cpu().numpy()
+
+        x = torch.cat([x_G, x_L], dim=1)
+        x = self.mlp(x)
+        vis_data['GnL_graph-1'] = x.clone().squeeze().detach().cpu().numpy()
+        return x, vis_data
