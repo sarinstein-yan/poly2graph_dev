@@ -109,8 +109,9 @@ def PosGoL(
     image: ArrayLike,
     sigmas: Optional[Iterable[int]] = [0, 1],
     ksizes: Optional[Iterable[int]] = [5],
-    black_ridges: Optional[bool] = True,
-    power_scaling: Optional[float] = None
+    black_ridges: Optional[bool] = False,
+    power_scaling: Optional[float] = None,
+    min_max_normalize: Optional[bool] = True
 ) -> np.ndarray:
     """
     Positive Laplacian of Gaussian (PosGoL) filter
@@ -134,6 +135,8 @@ def PosGoL(
         If provided, raises the normalized image to the given power before 
         applying the filter. For spectral potential landscape, power scaling
         by 1/n (n = 3, 5, ...) would sharpen the spectral graph.
+    minmax_normalize : boolean, optional
+        If True (the default), the image is normalized to the range [0, 1].
 
     Returns
     -------
@@ -152,7 +155,8 @@ def PosGoL(
     if black_ridges:
         image = -image
 
-    image = minmax_normalize(image)
+    if min_max_normalize:
+        image = minmax_normalize(image)
 
     if power_scaling is not None:
         image = image**power_scaling
@@ -223,8 +227,9 @@ def _coeff_multi_band(
 
 def Phi_image(
     c: ArrayLike,
-    Emax: Union[int, float, Sequence[float]],
+    Emax: Optional[Union[int, float, Sequence[float]]] = 3,
     Elen: Optional[int] = 400,
+    E_complex: Optional[np.ndarray] = None,
     method: Optional[Union[int, str]] = None
 ) -> np.ndarray:
     '''
@@ -240,12 +245,15 @@ def Phi_image(
         c[i_max//2, j_max//2] element representing the coefficient of (z^0 E^0). The
         shape of c in the second dimension (z powers) should be odd, with the middle
         term corresponding to z^0 E^*.
-    Emax : int, float, or Sequence[float]
+    Emax : int, float, or Sequence[float], optional
         Maximum energy range for the landscape. If a float is provided, the range is 
         [-Emax, Emax] for both real and imaginary parts. If a list(like), it should be 
         [E_real_min, E_real_max, E_imag_min, E_imag_max].
     Elen : int, optional
         Number of points in the energy range. Default is 400.
+    E_complex : ndarray, optional
+        Complex energy range to compute the TDL spectra. If provided, it will override
+        the energy range calculated from Emax and Elen. Default is None.
     method : int or str, optional
         Method to calculate the TDL spectra:
             - 1 or 'spectral' : spectral potential landscape
@@ -275,14 +283,15 @@ def Phi_image(
     c = np.asarray(c)
     is_one_band = len(c.shape) == 1
 
-    if isinstance(Emax, (int, float)):
-        E_re_min, E_re_max, E_im_min, E_im_max = -Emax, Emax, -Emax, Emax
-    elif isinstance(Emax, (tuple, list, np.ndarray)) & (len(Emax) == 4):
-        E_re_min, E_re_max, E_im_min, E_im_max = Emax
-    else:
-        raise ValueError("Invalid Emax. Provide a float or a list of 4 floats.")
-    E_complex = np.linspace(E_re_min, E_re_max, Elen) + \
-                1j*np.linspace(E_im_min, E_im_max, Elen)[:, None]
+    if E_complex is None:
+        if isinstance(Emax, (int, float)):
+            E_re_min, E_re_max, E_im_min, E_im_max = -Emax, Emax, -Emax, Emax
+        elif isinstance(Emax, (tuple, list, np.ndarray)) & (len(Emax) == 4):
+            E_re_min, E_re_max, E_im_min, E_im_max = Emax
+        else:
+            raise ValueError("Invalid Emax. Provide a float or a list of 4 floats.")
+        E_complex = np.linspace(E_re_min, E_re_max, Elen) + \
+                    1j*np.linspace(E_im_min, E_im_max, Elen)[:, None]
 
     c_trimmed, z0, q = _trim_c(c, is_one_band)
     if is_one_band:
@@ -309,7 +318,8 @@ def Phi_image(
         phi = np.log(betas[:, 1] - betas[:, 0])
     else:
         raise ValueError("Invalid method specified. Choose 1, 2, or 3.")
-    return phi.reshape(E_complex.shape)
+    
+    return -phi.reshape(E_complex.shape)
 
 def binarized_Phi_image(
     c: ArrayLike,
@@ -479,6 +489,7 @@ def Phi_graph(
     >>> graph = Phi_graph(c, Emax=2, Elen=400)
     '''
     
+    c = np.asarray(c)
     phi = Phi_image(c, Emax, Elen)
     ridge = PosGoL(phi, **PosGoL_kwargs)
     binary = ridge > thresholder(ridge)

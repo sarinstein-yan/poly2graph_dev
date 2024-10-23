@@ -3,7 +3,7 @@ import networkx as nx
 import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from ..poly2graph import binarized_Phi_image
+from ..poly2graph import Phi_image, PosGoL
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -15,14 +15,14 @@ def normalize_color(color, vmin=.3):
 
 def visualize_attention_scores(G, pos, labels, node_att, edge_att, is_G, ax):
     node_options = {
-        'node_size': 500*node_att,
-        'node_color': 'C1' if is_G else 'C0',
+        'node_size': 200*node_att,
+        'node_color': '#A60628' if is_G else '#348ABD',
     }
     label_options = {
         'labels': labels,
         'font_color': 'w',
         'font_weight': 'bold',
-        'font_size': 10
+        'font_size': 6
     }
     edge_options = {
         'edge_color': edge_att,
@@ -47,7 +47,7 @@ def visualize_node_embeddings(x, sorted_idx, is_G, ax):
     ticks = np.arange(0, len(sorted_idx), 1)
     ax.set_xticks(ticks, labels=tick_labels)
     ax.set_yticks(ticks, labels=tick_labels)
-    ax.grid(False)
+    ax.tick_params(axis='both', which='both', direction='in')
     return ax
 
 class ExplanationSummary():
@@ -59,7 +59,7 @@ class ExplanationSummary():
         if idx is not None:
             self.idx = idx
             self.get_data(idx)
-            self.to_nxGraph()
+            self.to_networkx_Graph()
     
     def get_data(self, idx):
         data_G, data_L = self.dataset[idx]
@@ -81,13 +81,13 @@ class ExplanationSummary():
     def __call__(self, idx):
         self.idx = idx
         self.get_data(idx)
-        self.to_nxGraph()
+        self.to_networkx_Graph()
         return self
 
     def clear_embeddings(self):
         self.embeddings = None
 
-    def _get_edge_att_TransformerConv(self, head):
+    def _get_edge_attention_TransformerConv(self, head):
         '''head is the index of the attention head, starting from 1'''
         if self.embeddings is None:
             raise ValueError('Embeddings not found. Call get_data() before calling this method.')
@@ -101,7 +101,7 @@ class ExplanationSummary():
             head = np.asarray(head)-1
             return edge_att_G[:,head].sum(-1), edge_att_L[:,head].sum(-1)
 
-    def _get_edge_att_GATv2Conv(self, layer):
+    def _get_edge_attention_GATv2Conv(self, layer):
         if self.embeddings is None:
             raise ValueError('Embeddings not found. Call get_data() before calling this method.')
         if isinstance(layer, int):
@@ -116,7 +116,7 @@ class ExplanationSummary():
         edge_att_L = np.hstack([self.embeddings['L_node'][f'att_w_conv{i}'] for i in layer])
         return edge_att_G.sum(-1), edge_att_L.sum(-1)
 
-    def _get_node_att(self,
+    def _get_node_attention(self,
         target_node_index_G, edge_att_G,
         target_node_index_L, edge_att_L,
         aggr=np.mean):
@@ -158,7 +158,7 @@ class ExplanationSummary():
         emb_last = self.embeddings['GnL_graph-1']
         return emb_convG, emb_convL, emb_last
     
-    def to_nxGraph(self, head='all', layer='all', create_using=nx.Graph):
+    def to_networkx_Graph(self, head='all', layer='all', create_using=nx.Graph):
         # get edge index
         edge_index_G = self.pygG.edge_index.numpy()
         edge_index_L = self.pygL.edge_index.numpy()
@@ -166,18 +166,18 @@ class ExplanationSummary():
         # get edge attention scores
         edge_att_G, edge_att_L = [], []
         if head is not None:
-            att_G, att_L = self._get_edge_att_TransformerConv(head)
+            att_G, att_L = self._get_edge_attention_TransformerConv(head)
             edge_att_G.append(att_G)
             edge_att_L.append(att_L)
         if layer is not None:
-            att_G, att_L = self._get_edge_att_GATv2Conv(layer)
+            att_G, att_L = self._get_edge_attention_GATv2Conv(layer)
             edge_att_G.append(att_G)
             edge_att_L.append(att_L)
         edge_att_G = np.sum(edge_att_G, axis=0)
         edge_att_L = np.sum(edge_att_L, axis=0)
 
         # get node attention scores
-        node_att_G, node_att_L = self._get_node_att(
+        node_att_G, node_att_L = self._get_node_attention(
                                     edge_index_G[1], edge_att_G,
                                     edge_index_L[1], edge_att_L)
         
@@ -216,23 +216,31 @@ class ExplanationSummary():
 
         return nxG, nxL
 
-    def summary_plot(self, path=None):
-        fig, axes = plt.subplots(3, 3, figsize=(15, 15))
-        ax = axes.flat
+
+    def attention_summary(self, ax=None):
+        '''
+        Plot 0: DOS, 1: attention scores of G-channel, 2: attention scores of L-channel
+        ax: 1x3 array of matplotlib axes
+        '''
+        if ax is None:
+            fig, ax = plt.subplots(1, 3, figsize=(9,3))
         emax = self.pygG.Emax.numpy()
 
-        # plot 0: binarized phi image
-        img = binarized_Phi_image(
+        # plot 0: DOS
+        img = PosGoL(Phi_image(
             c=self.pygG.full_coeffs.numpy(),
             Emax=emax,
-            Elen=500
-        )
-        ax[0].imshow(img, cmap='gray', extent=self.pygG.Emax.numpy())
-        ax[0].set(title='Graph Skeleton', xlabel='Re(E)', ylabel='Im(E)')
-        ax[0].grid(False)
+            Elen=200
+        ), ksizes=[11])
+        ax[0].imshow(img, cmap='gray', extent=self.pygG.Emax.numpy(), aspect='equal')
+        ax[0].set_title('Density of State')
+        ax[0].set_xlabel('Re(E)', labelpad=.01)
+        ax[0].set_ylabel('Im(E)', labelpad=.01)
+        ax[0].tick_params(axis='both', which='both', direction='in', color='w', pad=2)
+        ax[0].tick_params(axis='y', which='both', labelrotation=90)
         
         # plot 1: attention scores of G-channel
-        self.to_nxGraph(head='all', layer='all')
+        self.to_networkx_Graph(head='all', layer='all')
         visualize_attention_scores(
             self.nxG,
             self.pygG.pos,
@@ -243,7 +251,6 @@ class ExplanationSummary():
         )
         ax[1].set(
             title='Attention Scores of G',
-            # xlim=emax[:2], ylim=emax[2:]
         )
 
         # plot 2: attention scores of L-channel
@@ -257,33 +264,56 @@ class ExplanationSummary():
         )
         ax[2].set(
             title='Attention Scores of L',
-            xlim=ax[1].get_xlim(), ylim=ax[1].get_ylim()
         )
 
-        # plot 3-5: node embeddings of G-channel
+        return ax
+    
+    def node_embedding_summary(self, ax=None):
+        '''
+        Plot 0-2: node embeddings of G-channel, 3-5: node embeddings of L-channel
+        ax: 1x6 array of matplotlib axes
+        '''
+        if ax is None:
+            fig, axes = plt.subplots(2, 3, figsize=(9,6))
+            ax = axes.flat
+
+        # plot 0-2: node embeddings of G-channel
         emb_G, emb_labels_G = self.get_node_embeddings(is_G=True)
         sorted_idx_G = PCA(n_components=1).fit_transform(emb_G[-1]).ravel().argsort()
         for i, layer in enumerate([0,2,-1]):
-            visualize_node_embeddings(emb_G[layer], sorted_idx_G, is_G=True, ax=ax[i+3])
-            ax[i+3].set(title=emb_labels_G[layer])
+            visualize_node_embeddings(emb_G[layer], sorted_idx_G, is_G=True, ax=ax[i])
+            ax[i].set(title=emb_labels_G[layer])
 
-        # plot 6-8: node embeddings of L-channel
+        # plot 3-5: node embeddings of L-channel
         emb_L, emb_labels_L = self.get_node_embeddings(is_G=False)
         sorted_idx_L = PCA(n_components=1).fit_transform(emb_L[-1]).ravel().argsort()
         for i, layer in enumerate([0,2,-1]):
-            visualize_node_embeddings(emb_L[layer], sorted_idx_L, is_G=False, ax=ax[i+6])
-            ax[i+6].set(title=emb_labels_L[layer])
+            visualize_node_embeddings(emb_L[layer], sorted_idx_L, is_G=False, ax=ax[i+3])
+            ax[i+3].set(title=emb_labels_L[layer])
 
-        plt.tight_layout()
+        return ax
+
+    def summary_plot(self, path=None):
+        fig, axes = plt.subplots(3, 3, figsize=(9, 9))
+        ax = axes.flat
+        emax = self.pygG.Emax.numpy()
+
+        # plot 0-2: DOS, attention scores
+        self.attention_summary(ax[:3])
+
+        # plot 3-8: node embeddings
+        self.node_embedding_summary(ax[3:])
+
+        plt.tight_layout(pad=.01, h_pad=.01, w_pad=.01)
         if path is not None:
             plt.savefig(path, tranparent=True)
 
-        return fig, ax
+        return fig, axes
     
     def summary_plot_per_layer(self, path=None):
         n_row = 1+self.model.num_layer_conv
         n_col = max(self.model.num_heads+2, 2*3)
-        fig, axes = plt.subplots(n_row, n_col, figsize=(5*n_col, 5*n_row))
+        fig, axes = plt.subplots(n_row, n_col, figsize=(3*n_col, 3*n_row))
 
         emb_G, emb_labels_G = self.get_node_embeddings(is_G=True)
         sorted_idx_G = PCA(n_components=1).fit_transform(emb_G[-1]).ravel().argsort()
@@ -292,7 +322,7 @@ class ExplanationSummary():
 
         # each head, TransformerConv
         for col in range(self.model.num_heads):
-            self.to_nxGraph(head=col+1, layer=None)
+            self.to_networkx_Graph(head=col+1, layer=None)
             visualize_attention_scores(self.nxG, self.pygG.pos,
                 {i: f'{i}' for i in range(self.pygG.num_nodes)},
                 self.node_color_G, self.edge_color_G,
@@ -306,7 +336,7 @@ class ExplanationSummary():
         
         # each layer > 1, GATv2Conv
         for row in range(2, n_row):
-            self.to_nxGraph(head=None, layer=row)
+            self.to_networkx_Graph(head=None, layer=row)
             visualize_attention_scores(self.nxG, self.pygG.pos,
                 {i: f'{i}' for i in range(self.pygG.num_nodes)},
                 self.node_color_G, self.edge_color_G,
@@ -336,7 +366,7 @@ class ExplanationSummary():
             ax4.set(title=emb_labels_L[2*row-1])
             ax5.set(title=emb_labels_L[2*row])
 
-        plt.tight_layout()
+        plt.tight_layout(pad=.01, h_pad=.01, w_pad=.01)
         if path is not None:
             plt.savefig(path, tranparent=True)
 

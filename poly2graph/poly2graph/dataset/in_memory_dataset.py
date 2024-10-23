@@ -99,8 +99,8 @@ class Dataset_nHSG(InMemoryDataset):
                                y=torch.tensor([hashed_labels[i]], dtype=torch.long),
                                y_multi=torch.tensor([labels_signs[i]], dtype=torch.long),
                                free_coeffs=torch.tensor([labels[i]], dtype=torch.float32),
-                               full_coeffs=pyg_G.polynomial_coeff,
-                               Emax=pyg_G.Emax))
+                               full_coeffs=pyg_G.polynomial_coeff.unsqueeze(0),
+                               Emax=pyg_G.Emax.unsqueeze(0)))
             L_list.append(Data(x=pyg_L.x,
                                pos=pyg_L.pos.flip(-1),
                                edge_index=pyg_L.edge_index,
@@ -196,8 +196,8 @@ class Dataset_nHSG_Hetero(InMemoryDataset):
                 'y': torch.tensor([hashed_labels[i]], dtype=torch.long),
                 'y_multi': torch.tensor([labels_signs[i]], dtype=torch.long),
                 'free_coeffs': torch.tensor([labels[i]], dtype=torch.float32),
-                'full_coeffs': pyg_G.polynomial_coeff,
-                'Emax': pyg_G.Emax
+                'full_coeffs': pyg_G.polynomial_coeff.unsqueeze(0),
+                'Emax': pyg_G.Emax.unsqueeze(0)
 
             }))
 
