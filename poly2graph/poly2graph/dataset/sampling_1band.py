@@ -3,14 +3,30 @@ import itertools, h5py, pickle, os
 from .. import Phi_graph, auto_Emaxes, contract_close_nodes
 
 from numpy.typing import ArrayLike
-from typing import Optional
+from typing import Optional, Union, List
 
 ### Uniform (skewed) Data Sampling ###
 
-def generate_coefficients(samples_per_dim=7, dim=4, c_max=1.2):
+def dim_samples_step(samples_per_dim=7, dim=4, c_max=1.2):
     values = list(np.linspace(-c_max, c_max, samples_per_dim))
     combinations = list(itertools.product(values, repeat=dim))
     return combinations
+
+def generate_full_coefficients(free_coeff: ArrayLike) -> ArrayLike:
+    # convert free coefficients to full coefficients
+    free_coeff = np.asarray(free_coeff)
+    dim = free_coeff.shape[1]
+    if dim == 4:
+        coeff_matrix = np.array([(1, x[0], x[1], 0, x[2], x[3], 1) for x in free_coeff])
+    elif dim == 6:
+        coeff_matrix = np.array([(1, x[0], x[1], x[2], 0, x[3], x[4], x[5], 1) for x in free_coeff])
+    elif dim == 7:
+        coeff_matrix = np.array([(x[0], x[1], x[2], x[3], 0, x[4], x[5], x[6], 1) for x in free_coeff])
+        coeff_matrix = coeff_matrix[np.abs(coeff_matrix[:, :4]).sum(-1) > 0]
+    else:
+        raise ValueError(f"free_coeff with dim={dim} is not implemented. Only dim=4, 6, 7 are supported.")
+    return coeff_matrix
+
 
 ### Balanced Data Sampling ###
 
@@ -56,25 +72,18 @@ def generate_coefficients_balanced(samples_per_class=2000, dim=4, c_max=1.2, met
 
 def generate_dataset(
     file_name_prefix: str,
-    labels: np.ndarray,
+    coeff_matrix: Union[ArrayLike, List],
+    labels: Union[ArrayLike, List],
     Elen: int,
     contract_threshold: Optional[int]=None,
     num_partition: Optional[int]=1,
     auto_Emaxes_kwargs: Optional[dict]={}
 ) -> None:
     
-    # convert labels to coefficients
-    labels = np.asarray(labels)
-    dim = labels.shape[1]
-    if dim == 4:
-        coeff_matrix = np.array([(1, x[0], x[1], 0, x[2], x[3], 1) for x in labels])
-    elif dim == 6:
-        coeff_matrix = np.array([(1, x[0], x[1], x[2], 0, x[3], x[4], x[5], 1) for x in labels])
-    elif dim == 7:
-        coeff_matrix = np.array([(x[0], x[1], x[2], x[3], 0, x[4], x[5], x[6], 1) for x in labels])
-        coeff_matrix = coeff_matrix[np.abs(coeff_matrix[:, :4]).sum(-1) > 0]
-    else:
-        raise ValueError(f"labels with dim={dim} is not implemented. Only dim=4, 6, 7 are supported.")
+    ### convert labels to coefficients
+    # labels = np.asarray(labels)
+    # coeff_matrix = np.asarray(coeff_matrix)
+    assert len(coeff_matrix) == len(labels), "Number of coefficients and labels do not match."
 
     # Partition the coeff_matrix
     total_coeff = len(coeff_matrix)
@@ -141,14 +150,15 @@ def load_dataset(file_name_prefix, num_partition=None):
             all_graphs.extend(graphs)
             all_labels.extend(labels)
         
-        return all_graphs, np.array(all_labels)
+        return all_graphs, all_labels
 
 
 if __name__ == '__main__':
     if not os.path.exists('./Datasets'):
         os.makedirs('./Datasets')
     # generate_dataset('./Datasets/dataset_graph_dim6', samples_per_dim=7, dim=6, c_max=1.2, Elen=900, num_partition=10)
-    coeff = generate_coefficients(samples_per_dim=7, dim=6, c_max=1.2)
+    free_coeff = dim_samples_step(samples_per_dim=7, dim=6, c_max=1.2)
+    coeff = generate_full_coefficients(free_coeff)
     generate_dataset('./Datasets/dataset_graph_dim6', coeff, Elen=512, contract_threshold=14, num_partition=10)
 
 

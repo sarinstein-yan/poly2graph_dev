@@ -51,10 +51,10 @@ def visualize_node_embeddings(x, sorted_idx, is_G, ax):
     return ax
 
 class ExplanationSummary():
-    def __init__(self, model, dataset, grouped_graph_class_index, idx=None):
+    def __init__(self, model, dataset, graph_class_index, idx=None):
         self.model = model.cpu()
         self.dataset = dataset
-        self.grouped_graph_class_index = grouped_graph_class_index
+        self.graph_class_index = graph_class_index
         self.embeddings = None
         if idx is not None:
             self.idx = idx
@@ -72,8 +72,8 @@ class ExplanationSummary():
         self.y_pred = y_pred
         self.y_pred_probs = probs[y_pred]
         self.y_true = data_G.y.item()
-        self.poly_coeffs = data_G.full_coeffs.numpy()
-        self.graph_iso_class = self.grouped_graph_class_index[idx]
+        self.poly_coeffs = data_G.full_coeffs.numpy()[0]
+        self.graph_iso_class = self.graph_class_index[idx].item()
         self.embeddings = embeddings
         self.pygG = data_G
         self.pygL = data_L
@@ -224,15 +224,15 @@ class ExplanationSummary():
         '''
         if ax is None:
             fig, ax = plt.subplots(1, 3, figsize=(9,3))
-        emax = self.pygG.Emax.numpy()
+        emax = self.pygG.Emax.numpy()[0]
 
         # plot 0: DOS
         img = PosGoL(Phi_image(
-            c=self.pygG.full_coeffs.numpy(),
+            c=self.poly_coeffs,
             Emax=emax,
             Elen=200
         ), ksizes=[11])
-        ax[0].imshow(img, cmap='gray', extent=self.pygG.Emax.numpy(), aspect='equal')
+        ax[0].imshow(img, cmap='gray', extent=emax, aspect='equal')
         ax[0].set_title('Density of State')
         ax[0].set_xlabel('Re(E)', labelpad=.01)
         ax[0].set_ylabel('Im(E)', labelpad=.01)
@@ -296,7 +296,6 @@ class ExplanationSummary():
     def summary_plot(self, path=None):
         fig, axes = plt.subplots(3, 3, figsize=(9, 9))
         ax = axes.flat
-        emax = self.pygG.Emax.numpy()
 
         # plot 0-2: DOS, attention scores
         self.attention_summary(ax[:3])
