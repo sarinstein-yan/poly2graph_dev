@@ -51,17 +51,17 @@ def visualize_node_embeddings(x, sorted_idx, is_G, ax):
     return ax
 
 class ExplanationSummary():
-    def __init__(self, model, dataset, graph_class_index, idx=None):
+    def __init__(self, model, dataset, graph_class_index=None, idx=None, y_true=None):
         self.model = model.cpu()
         self.dataset = dataset
         self.graph_class_index = graph_class_index
         self.embeddings = None
         if idx is not None:
             self.idx = idx
-            self.get_data(idx)
+            self.get_data(idx, y_true)
             self.to_networkx_Graph()
     
-    def get_data(self, idx):
+    def get_data(self, idx, y_true=None):
         data_G, data_L = self.dataset[idx]
         data_G.batch = torch.zeros(data_G.num_nodes, dtype=torch.long)
         data_L.batch = torch.zeros(data_L.num_nodes, dtype=torch.long)
@@ -71,16 +71,17 @@ class ExplanationSummary():
         y_pred = probs.argsort()[::-1]
         self.y_pred = y_pred
         self.y_pred_probs = probs[y_pred]
-        self.y_true = data_G.y.item()
+        self.y_true = data_G.y_asym.item() if y_true is None else y_true
         self.poly_coeffs = data_G.full_coeffs.numpy()[0]
-        self.graph_iso_class = self.graph_class_index[idx].item()
+        if self.graph_class_index is not None:
+            self.graph_iso_class = self.graph_class_index[idx].item()
         self.embeddings = embeddings
         self.pygG = data_G
         self.pygL = data_L
 
-    def __call__(self, idx):
+    def __call__(self, idx, y_true=None):
         self.idx = idx
-        self.get_data(idx)
+        self.get_data(idx, y_true)
         self.to_networkx_Graph()
         return self
 
