@@ -42,7 +42,7 @@ def visualize_node_embeddings(x, sorted_idx, is_G, ax):
     similarity = cosine_similarity(x[sorted_idx])
     cmap = 'inferno' if is_G else 'viridis'
     if is_G: tick_labels = sorted_idx
-    else: tick_labels = [chr(97+i) for i in sorted_idx]
+    else: tick_labels = [chr(65+i) for i in sorted_idx]
     ax.imshow(similarity, cmap=cmap)
     ticks = np.arange(0, len(sorted_idx), 1)
     ax.set_xticks(ticks, labels=tick_labels)
@@ -54,6 +54,8 @@ class ExplanationSummary():
     def __init__(self, model, dataset, graph_class_index=None, idx=None, y_true=None):
         self.model = model.cpu()
         self.dataset = dataset
+        if graph_class_index is not None:
+            assert len(dataset) == len(graph_class_index), 'graph_class_index must have the same length as the dataset.'
         self.graph_class_index = graph_class_index
         self.embeddings = None
         if idx is not None:
@@ -67,11 +69,11 @@ class ExplanationSummary():
         data_L.batch = torch.zeros(data_L.num_nodes, dtype=torch.long)
         self.model.eval()
         out, embeddings = self.model(data_G, data_L)
-        probs = F.softmax(out, dim=1).squeeze().detach().cpu().numpy()
+        probs = F.softmax(out, dim=1).squeeze().detach().numpy()
         y_pred = probs.argsort()[::-1]
         self.y_pred = y_pred
         self.y_pred_probs = probs[y_pred]
-        self.y_true = data_G.y_asym.item() if y_true is None else y_true
+        self.y_true = data_G.y.item() if y_true is None else y_true
         self.poly_coeffs = data_G.full_coeffs.numpy()[0]
         if self.graph_class_index is not None:
             self.graph_iso_class = self.graph_class_index[idx].item()
@@ -128,7 +130,8 @@ class ExplanationSummary():
         node_att_L = [aggr(edge_att_L[target_node_index_L==i]) for i in range(self.pygL.num_nodes)]
         return normalize_color(node_att_G), normalize_color(node_att_L)
 
-    def get_node_embeddings(self, is_G=True):
+    def get_node_embeddings(self, is_G=True, idx=None):
+        if idx is not None: self(idx)
         if self.embeddings is None:
             raise ValueError('Embeddings not found. Call get_data() before calling this method.')
         if is_G or is_G == 'G':
@@ -151,7 +154,8 @@ class ExplanationSummary():
             raise ValueError('is_G must be a boolean or a string of "G" or "L".')
 
     
-    def get_graph_embeddings(self):
+    def get_graph_embeddings(self, idx=None):
+        if idx is not None: self(idx)
         if self.embeddings is None:
             raise ValueError('Embeddings not found. Call get_data() before calling this method.')
         emb_convG = self.embeddings['G_graph1']

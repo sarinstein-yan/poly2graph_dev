@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=62", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,7 @@ name = "poly2graph"
 version = "0.1.0"
 description = "Automated Non-Hermitian Spectral Graph Extraction"
 readme = "README.md"
-license = {text = "MIT", file = "LICENSE"}
+license = {file = "LICENSE"}
 authors = [
     {name = "Xianquan (Sarinstein) Yan", email = "xianquanyan@gmail.com"}
 ]
@@ -20,14 +20,14 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Environment :: GPU :: NVIDIA CUDA"
 ]
+dependencies = [
+    "numpy",
+    "numba",
+    "networkx",
+    "scikit-image",
+    "torchmetrics",
+    "gdown"
+]
 
 [project.optional-dependencies]
 dev = ["torch", "torch_geometric", "tensorflow"]  # Optional packages to install manually
-
-[project.dependencies]
-numpy = "*"
-numba = "*"
-networkx = "*"
-scikit-image = "*"
-torchmetrics = "*"
-gdown = "*"
