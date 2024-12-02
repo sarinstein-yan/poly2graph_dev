@@ -9,11 +9,11 @@ from .spectral_graph import (
 auto_Emaxes,
 minmax_normalize,
 PosGoL,
-Phi_image,
-binarized_Phi_image,
+spectral_potential,
+spectral_images_adaptive_resolution,
 delete_iso_nodes,
 contract_close_nodes,
-Phi_graph,
+spectral_graph,
 draw_image)
 
 from . import dataset
@@ -35,11 +35,11 @@ __all__ = [
 'auto_Emaxes',
 'minmax_normalize',
 'PosGoL',
-'Phi_image',
-'binarized_Phi_image',
+'spectral_potential',
+'spectral_images_adaptive_resolution',
 'delete_iso_nodes',
 'contract_close_nodes',
-'Phi_graph',
+'spectral_graph',
 'draw_image',
 
 'dataset']

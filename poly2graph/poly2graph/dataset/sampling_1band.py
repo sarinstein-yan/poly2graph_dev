@@ -1,6 +1,6 @@
 import numpy as np
 import itertools, h5py, pickle, os
-from .. import Phi_graph, auto_Emaxes, contract_close_nodes
+from .. import spectral_graph, auto_Emaxes, contract_close_nodes
 
 from numpy.typing import ArrayLike
 from typing import Optional, Union, List
@@ -102,7 +102,7 @@ def generate_dataset(
         graphs = []
         for c in partition_coeff_matrix:
             Eauto = auto_Emaxes(c, **auto_Emaxes_kwargs)
-            graph = Phi_graph(c, Emax=Eauto, Elen=Elen, 
+            graph = spectral_graph(c, Emax=Eauto, Elen=Elen, 
                               contract_threshold=contract_threshold,
                               Potential_feature=True,
                               DOS_feature=True,
@@ -181,7 +181,7 @@ if __name__ == '__main__':
 #         if dim == 6:
 #             c = [1, comb[0], comb[1], comb[2], 0, comb[3], comb[4], comb[5], 1]
 #         Eauto = auto_Emaxes(c, N=40, pbc=False)
-#         graph = Phi_graph(c, Emax=Eauto, Elen=Elen)
+#         graph = spectral_graph(c, Emax=Eauto, Elen=Elen)
 #         graphs.append(graph)
 #         labels.append(comb)
     

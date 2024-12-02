@@ -31,7 +31,7 @@ def hash_labels(
     dim = labels.shape[1]
     base_vec = np.array([n**i for i in range(dim)])
     hash_value = base_vec @ labels.T
-    if reindex:        
+    if reindex:
         unique_hash = np.unique(hash_value)
         hash_map = {hash_val: i for i, hash_val in enumerate(unique_hash)}
         reassigned_hash_value = np.array([hash_map[val] for val in hash_value])

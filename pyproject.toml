@@ -4,20 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "poly2graph"
-version = "0.1.0"
-description = "Automated Non-Hermitian Spectral Graph Extraction"
+version = "0.0.1"
+description = "Automated Non-Hermitian Spectral Graph Construction"
 readme = "README.md"
-license = {file = "LICENSE"}
 authors = [
     {name = "Xianquan (Sarinstein) Yan", email = "xianquanyan@gmail.com"}
 ]
-homepage = "https://github.com/sarinstein-yan/spectral-topology"
+readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.9"
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
     "Environment :: GPU :: NVIDIA CUDA"
 ]
 dependencies = [
@@ -31,3 +30,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["torch", "torch_geometric", "tensorflow"]  # Optional packages to install manually
+
+[project.urls]
+Homepage = "https://github.com/sarinstein-yan/poly2graph"

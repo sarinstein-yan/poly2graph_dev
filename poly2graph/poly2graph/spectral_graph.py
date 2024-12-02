@@ -5,8 +5,9 @@ import tensorflow as tf
 from numba import njit
 from .skeleton2graph import skeleton2graph
 from .parallel_roots import poly_roots_tf_batch
-from skimage.morphology import skeletonize
+from skimage.morphology import skeletonize, dilation, disk
 from skimage.filters import laplace, gaussian
+from skimage.util import view_as_blocks
 
 from numpy.typing import ArrayLike
 from typing import Union, Sequence, Optional, Callable, Any, Iterable, TypeVar
@@ -22,7 +23,7 @@ def auto_Emaxes(
     pad_factor: Optional[float] = 0.1
 ):
     """
-    Automatically determine the Emax range for Phi_image / Phi_graph.
+    Automatically determine the E_max range for spectral_potential / spectral_graph.
 
     Only applies to one-band polynomials.
     
@@ -41,7 +42,7 @@ def auto_Emaxes(
     pbc : bool, optional
         If True, implement periodic boundary conditions. Default is False.
     pad_factor : float, optional
-        Factor to pad the Emax range. The TDL spectrum is usually slightly
+        Factor to pad the E_max range. The TDL spectrum is usually slightly
         larger than the spectrum of a finite system. Default is 0.1.
 
     Returns
@@ -49,6 +50,9 @@ def auto_Emaxes(
     E_re_min, E_re_max, E_im_min, E_im_max : float
 
     """
+    # Ensure one-band polynomial
+    if len(c.shape) != 1:
+        raise ValueError("Only one-band polynomials are supported.")
     # Ensure the coefficients list is symmetric
     if len(c) % 2 == 0:
         raise ValueError("The length of coefficients 'c' must be odd."
@@ -78,7 +82,7 @@ def auto_Emaxes(
     im_min, im_max = np.min(E.imag), np.max(E.imag)
     len_re, len_im = re_max - re_min, im_max - im_min
 
-    # # Use this for rectangular Emax range
+    # # Use this for rectangular E_max range
     # pad_re, pad_im = pad_factor * len_re, pad_factor * len_im
     # return re_min - pad_re, re_max + pad_re, im_min - pad_im, im_max + pad_im
 
@@ -111,7 +115,8 @@ def PosGoL(
     ksizes: Optional[Iterable[int]] = [5],
     black_ridges: Optional[bool] = False,
     power_scaling: Optional[float] = None,
-    min_max_normalize: Optional[bool] = True
+    min_max_normalize: Optional[bool] = True,
+    copy: Optional[bool] = True
 ) -> np.ndarray:
     """
     Positive Laplacian of Gaussian (PosGoL) filter
@@ -151,6 +156,8 @@ def PosGoL(
     response and zero, normalizing it, and then taking the pixel-wise maximum 
     response across all specified scales and kernel sizes.
     """
+    if copy:
+        image = np.array(image, copy=True)
 
     if black_ridges:
         image = -image
@@ -202,34 +209,34 @@ def _trim_c(
 @njit
 def _coeff_one_band(
     c: np.ndarray,
-    E_complex: np.ndarray,
+    E_array: np.ndarray,
     z0: int
 ) -> np.ndarray:
     
-    coeff = np.zeros((E_complex.size, len(c)), dtype=np.complex64)
+    coeff = np.zeros((E_array.size, len(c)), dtype=np.complex64)
     for i in range(len(c)):
         coeff[:, i] = c[i]
-    coeff[:, z0] -= E_complex.ravel()
+    coeff[:, z0] -= E_array.ravel()
 
     return coeff
 
 def _coeff_multi_band(
     c_grid: np.ndarray,
-    E_complex: np.ndarray,
+    E_array: np.ndarray,
 ) -> np.ndarray:
     
     E_pow_len = c_grid.shape[0] # number of E powers
     powers = np.arange(E_pow_len) - E_pow_len//2 # exponents of E
-    E_powers = E_complex[..., np.newaxis] ** powers # shape: (Elen, Elen, E_pow_len)
-    coeff_grid = np.einsum('ijk,kl->ijl', E_powers, c_grid) # shape: (Elen, Elen, i_len)
+    E_powers = E_array[..., np.newaxis] ** powers # shape: (E_len, E_len, E_pow_len)
+    coeff_grid = np.einsum('ijk,kl->ijl', E_powers, c_grid) # shape: (E_len, E_len, i_len)
 
     return coeff_grid.reshape(-1, coeff_grid.shape[-1])
 
-def Phi_image(
+def spectral_potential(
     c: ArrayLike,
-    Emax: Optional[Union[int, float, Sequence[float]]] = 3,
-    Elen: Optional[int] = 400,
-    E_complex: Optional[np.ndarray] = None,
+    E_max: Optional[Union[int, float, Sequence[float]]] = 3,
+    E_len: Optional[int] = 400,
+    E_array: Optional[np.ndarray] = None,
     method: Optional[Union[int, str]] = None
 ) -> np.ndarray:
     '''
@@ -245,20 +252,20 @@ def Phi_image(
         c[i_max//2, j_max//2] element representing the coefficient of (z^0 E^0). The
         shape of c in the second dimension (z powers) should be odd, with the middle
         term corresponding to z^0 E^*.
-    Emax : int, float, or Sequence[float], optional
+    E_max : int, float, or Sequence[float], optional
         Maximum energy range for the landscape. If a float is provided, the range is 
-        [-Emax, Emax] for both real and imaginary parts. If a list(like), it should be 
+        [-E_max, E_max] for both real and imaginary parts. If a list(like), it should be 
         [E_real_min, E_real_max, E_imag_min, E_imag_max].
-    Elen : int, optional
+    E_len : int, optional
         Number of points in the energy range. Default is 400.
-    E_complex : ndarray, optional
-        Complex energy range to compute the TDL spectra. If provided, it will override
-        the energy range calculated from Emax and Elen. Default is None.
+    E_array : ndarray, optional
+        Complex energy array to compute the TDL spectra. If provided, it will override
+        the energy range calculated from E_max and E_len. Default is None.
     method : int or str, optional
         Method to calculate the TDL spectra:
             - 1 or 'spectral' : spectral potential landscape
-            - 2 or 'diff_log' : difference of kappas corresponding
-                                to the least 2 |z|'s
+            - 2 or 'diff_log' : difference of inverse skin depths corresponding to the 
+                                least 2 |z|'s
             - 3 or 'log_diff' : log difference of the least 2 |z|'s
         Default is None.
 
@@ -271,37 +278,37 @@ def Phi_image(
     --------
     One-band polynomial:
     >>> c = np.array([1, .4, 1, .1, 0, 0, .2, -.4, 1])
-    >>> phi = Phi_image(c, Emax=3.5, Elen=400)
+    >>> phi = spectral_potential(c, E_max=3.5)
 
     Multi-band polynomial (Hatano-Nelson model):
     >>> c = np.array([[0,  0, 0],
                       [.5, 0, 1],
                       [0, -1, 0]])
-    >>> phi = Phi_image(c, Emax=2, Elen=400)
+    >>> phi = spectral_potential(c, E_max=2, E_len=400)
     '''
 
     c = np.asarray(c)
     is_one_band = len(c.shape) == 1
 
-    if E_complex is None:
-        if isinstance(Emax, (int, float)):
-            E_re_min, E_re_max, E_im_min, E_im_max = -Emax, Emax, -Emax, Emax
-        elif isinstance(Emax, (tuple, list, np.ndarray)) & (len(Emax) == 4):
-            E_re_min, E_re_max, E_im_min, E_im_max = Emax
+    if E_array is None:
+        if isinstance(E_max, (int, float)):
+            E_re_min, E_re_max, E_im_min, E_im_max = -E_max, E_max, -E_max, E_max
+        elif isinstance(E_max, (tuple, list, np.ndarray)) & (len(E_max) == 4):
+            E_re_min, E_re_max, E_im_min, E_im_max = E_max
         else:
-            raise ValueError("Invalid Emax. Provide a float or a list of 4 floats.")
-        E_complex = np.linspace(E_re_min, E_re_max, Elen) + \
-                    1j*np.linspace(E_im_min, E_im_max, Elen)[:, None]
+            raise ValueError("Invalid E_max. Provide a float or a list of 4 floats.")
+        E_array = np.linspace(E_re_min, E_re_max, E_len) + \
+                    1j*np.linspace(E_im_min, E_im_max, E_len)[:, None]
 
     c_trimmed, z0, q = _trim_c(c, is_one_band)
     if is_one_band:
-        coeff = _coeff_one_band(c_trimmed, E_complex, z0)
+        coeff = _coeff_one_band(c_trimmed, E_array, z0)
     else:
-        coeff = _coeff_multi_band(c_trimmed, E_complex)
+        coeff = _coeff_multi_band(c_trimmed, E_array)
 
     # Compute roots in z for each E
     coeff_tf = tf.constant(coeff, dtype=tf.complex64)
-    z = poly_roots_tf_batch(coeff_tf).numpy()  # Shape: (E_complex.size, degree)
+    z = poly_roots_tf_batch(coeff_tf).numpy()  # Shape: (E_array.size, degree)
 
     # Proceed to compute phi based on the selected method
     if method is None or method == 1 or method == 'spectral':
@@ -319,18 +326,102 @@ def Phi_image(
     else:
         raise ValueError("Invalid method specified. Choose 1, 2, or 3.")
     
-    return -phi.reshape(E_complex.shape)
+    return -phi.reshape(E_array.shape)
 
-def binarized_Phi_image(
+def spectral_images_adaptive_resolution(
     c: ArrayLike,
-    Emax: Union[int, float, Sequence[float]],
-    Elen: Optional[int] = 400,
-    thresholder: Optional[Callable] = np.mean
+    E_max: Union[int, float, Sequence[float]],
+    E_len: Optional[int] = 512,
+    E_splits: Optional[int] = 1,
+    thresholder: Optional[Callable] = np.mean,
+    PosGoL_kwargs: Optional[dict] = {}
 ) -> np.ndarray:
-    phi = Phi_image(c, Emax, Elen)
-    ridge = PosGoL(phi)
+    """
+    Generate the spectral potential landscape, density of states, and graph
+    'strips' of a given one-band / multi-band characteristic polynomial.
+    Adaptive resolution and parallellized root-finder computation are used.
+
+    Parameters
+    ----------
+    c : ArrayLike
+        Coefficient matrix of the polynomial. 
+        - For one-band polynomial, c should be a 1D array of (symmetric) coefficients, 
+        ignoring the -E term. The middle term corresponds to z^0.
+        - For multi-band polynomial, c should be a 2D array of coefficients, with the
+        c[i_max//2, j_max//2] element representing the coefficient of (z^0 E^0). The
+        shape of c in the second dimension (z powers) should be odd, with the middle
+        term corresponding to z^0 E^*.
+    E_max : int, float, or Sequence[float], optional
+        Maximum energy range for the landscape. If a real number is provided, the range
+        is [-E_max, E_max] for both real and imaginary parts. If a list, it should 
+        contain [E_real_min, E_real_max, E_imag_min, E_imag_max].
+    E_len : int, optional
+        Number of point per dimension of the energy grid. Used to filter a rough region
+        covering the spectral graph. Default is 512.
+    E_splits : float, optional
+        Energy grid resolution enhancement factor. The resolution applied on the filtered
+        region is E_splits times higher than the original grid. Default is 1.
+    thresholder : callable, optional
+        Function to threshold the ridge image. Default is np.mean.
+    PosGoL_kwargs : dict, optional
+        Additional keyword arguments for the PosGoL filter.
+
+    Returns
+    -------
+    (binary, phi, ridge) : tuple
+    
+    binary : ndarray
+        Binarized density of states image, i.e. the graph 'strips' before skeletonization.
+    phi : ndarray
+        The 2D image of the spectral potential landscape Phi(E).
+    dos : ndarray
+        The 2D image of the density of states.
+    """
+    
+    c = np.asarray(c)
+    
+    if isinstance(E_max, (int, float)):
+        E_re_min, E_re_max, E_im_min, E_im_max = -E_max, E_max, -E_max, E_max
+    elif isinstance(E_max, (tuple, list, np.ndarray)) & (len(E_max) == 4):
+        E_re_min, E_re_max, E_im_min, E_im_max = E_max
+    else:
+        raise ValueError("Invalid E_max. Provide a float or a list of 4 floats.")
+    E_arr = np.linspace(E_re_min, E_re_max, E_len) + \
+                1j*np.linspace(E_im_min, E_im_max, E_len)[:, None]
+
+    phi = spectral_potential(c, E_array=E_arr)
+    ridge = PosGoL(phi, **PosGoL_kwargs)
     binary = ridge > thresholder(ridge)
-    return binary
+    if E_splits <= 1 or E_splits is None:
+        return binary, phi, ridge
+    
+    mask1 = np.where(binary)
+    mask0 = np.where(~binary)
+    dilated = dilation(binary, disk(2))
+    mask1_ = np.where(dilated)
+    # mask0_ = np.where(~dilated)
+
+    E_split = np.linspace(E_re_min, E_re_max, E_splits*E_len) + \
+                        1j*np.linspace(E_im_min, E_im_max, E_splits*E_len)[:, None]
+    E_block = view_as_blocks(E_split, (E_splits, E_splits))
+    masked_E_block = E_block[mask1_]
+
+    phi_ = np.repeat(np.repeat(phi, E_splits, axis=0), E_splits, axis=1)
+    phi_block = view_as_blocks(phi_, (E_splits, E_splits))
+    phi_dense = spectral_potential(c, E_array=masked_E_block)
+    phi_block[mask1_] = phi_dense
+    ridge_ = PosGoL(phi_, **PosGoL_kwargs)
+    ridge_block = view_as_blocks(ridge_, (E_splits, E_splits))
+    ridge_block[mask0] = 0
+    
+    weights = np.array([ridge_block[mask1].size, ridge[mask0].size * E_splits**2])
+    means = np.array([np.mean(ridge_block[mask1]), np.mean(ridge[mask0])])
+    threshold = np.dot(weights, means) / np.sum(weights)
+    binary_ = ridge_ > threshold
+    binary_block = view_as_blocks(binary_, (E_splits, E_splits))
+    binary_block[mask0] = 0
+
+    return binary_, phi_, ridge_
 
 ### Spectral Graph utensils and generator ###
 
@@ -400,7 +491,7 @@ def process_contracted_graph(G: nxGraph) -> nxGraph:
     return processed_graph
 
 def contract_close_nodes(
-    G: nxGraph, 
+    G: nxGraph,
     threshold: Union[int, float]
 ) -> nxGraph:
     '''
@@ -425,20 +516,22 @@ def contract_close_nodes(
                     pass
     return delete_iso_nodes(contracted_graph) # remove isolated clusters
 
-def Phi_graph(
+def spectral_graph(
     c: ArrayLike,
-    Emax: Union[int, float, Sequence[float]],
-    Elen: Optional[int] = 400,
-    thresholder: Optional[Callable] = np.mean,
+    E_max: Union[int, float, Sequence[float]],
+    E_len: Optional[int] = 512,
+    E_splits: Optional[int] = 1,
     Potential_feature: Optional[bool] = True,
     DOS_feature: Optional[bool] = True,
-    contract_threshold: Optional[Union[int, float]] = None,
-    scale_features: Optional[bool] = True,
+    scale_features: Optional[Union[int, float]] = 1,
+    thresholder: Optional[Callable] = np.mean,
+    contract_threshold: Optional[Union[int, float]] = 15,
     s2g_kwargs: Optional[dict] = {},
-    PosGoL_kwargs: Optional[dict] = {}
+    PosGoL_kwargs: Optional[dict] = {},
 ) -> nxGraph:
     '''
     Generate the spectral graph of a given one-band / multi-band characteristic polynomial.
+    Adaptive resolution and parallellized root-finder computation are used.
 
     Parameters
     ----------
@@ -450,26 +543,33 @@ def Phi_graph(
         c[i_max//2, j_max//2] element representing the coefficient of (z^0 E^0). The
         shape of c in the second dimension (z powers) should be odd, with the middle
         term corresponding to z^0 E^*.
-    Emax : int, float, or Sequence[float], optional
+    E_max : int, float, or Sequence[float], optional
         Maximum energy range for the landscape. If a real number is provided, the range
-        is [-Emax, Emax] for both real and imaginary parts. If a list, it should contain
-        [E_real_min, E_real_max, E_imag_min, E_imag_max].
-    Elen : int, optional
-        Number of points in the energy range. Default is 400.
-    thresholder : callable, optional
-        Function to threshold the ridge image. Default is np.mean.
+        is [-E_max, E_max] for both real and imaginary parts. If a list, it should 
+        contain [E_real_min, E_real_max, E_imag_min, E_imag_max].
+    E_len : int, optional
+        Number of point per dimension of the energy grid. Used to filter a rough region
+        covering the spectral graph. Default is 512.
+    E_splits : float, optional
+        Energy grid resolution enhancement factor. The resolution applied on the filtered
+        region is E_splits times higher than the original grid. Default is 1.
     Potential_feature : bool, optional
         If True (the default), the spectral potential landscape is included as a node
         feature.
     DOS_feature : bool, optional
         If True (the default), the density of states is included as a node feature.
+    scale_features : int or float, optional
+        If None, the positions of nodes and edges are pixel indices, i.e., in 
+        [0, E_len*E_splits-1]. If provided, the node features are scaled by this factor. 
+        Default is 1.
+    thresholder : callable, optional
+        Function to threshold the ridge image. Default is np.mean.
     contract_threshold : int or float, optional
-        Threshold for contracting close nodes. Default is None.
-    scale_features : bool, optional
-        If True (the default), scale the node and edge features to be proportional to
-        the actual complex energy values.
+        Threshold for contracting close nodes. Default is 15.
     s2g_kwargs : dict, optional
         Additional keyword arguments for skeleton2graph.
+    PosGoL_kwargs : dict, optional
+        Additional keyword arguments for the PosGoL filter.
 
     Returns
     -------
@@ -480,47 +580,49 @@ def Phi_graph(
     --------
     One-band polynomial:
     >>> c = np.array([1, .4, 1, .1, 0, 0, .2, -.4, 1])
-    >>> graph = Phi_graph(c, Emax=3.5, Elen=400)
+    >>> graph = spectral_graph(c, E_max=3.5)
 
     Multi-band polynomial (Hatano-Nelson model):
     >>> c = np.array([[0,  0, 0],
                       [.5, 0, 1],
                       [0, -1, 0]])
-    >>> graph = Phi_graph(c, Emax=2, Elen=400)
+    >>> graph = spectral_graph(c, E_max=2)
     '''
-    
-    c = np.asarray(c)
-    phi = Phi_image(c, Emax, Elen)
-    ridge = PosGoL(phi, **PosGoL_kwargs)
-    binary = ridge > thresholder(ridge)
+
+    binary, phi, ridge = spectral_images_adaptive_resolution(c, E_max, 
+                                E_len, E_splits, thresholder, PosGoL_kwargs)
+
     ske = skeletonize(binary, method='lee')
+
     Potential_image = phi.astype(np.float32) if Potential_feature else None
     DOS_image = ridge.astype(np.float32) if DOS_feature else None
     graph = skeleton2graph(ske, Potential_image=Potential_image, DOS_image=DOS_image, **s2g_kwargs)
     if contract_threshold is not None:
         graph = contract_close_nodes(graph, contract_threshold)
 
-    if scale_features:
-        if isinstance(Emax, (int, float)):
+    if scale_features is not None:
+        Elen = E_len * E_splits
+        if isinstance(E_max, (int, float)):
             center = np.array([0, 0])
-            scale = Emax / Elen
-        elif isinstance(Emax, (tuple, list, np.ndarray)) & (len(Emax) == 4):
-            center = np.array([Emax[2] + Emax[3], Emax[0] + Emax[1]]) / 2
-            scale = (Emax[1] - Emax[0]) / Elen
+            scale = E_max / Elen
+        elif isinstance(E_max, (tuple, list, np.ndarray)) & (len(E_max) == 4):
+            center = np.array([E_max[2] + E_max[3], E_max[0] + E_max[1]]) / 2
+            scale = (E_max[1] - E_max[0]) / Elen
         _center = np.array([Elen-1, Elen-1])/2 # offset 1 for 0-based indexing
 
         for node in graph.nodes(data=True):
             if 'o' in node[1]:
                 # to float32 for compatibility with torch_geometric
-                node[1]['o'] = (((node[1]['o']-_center)*scale + center)*128).astype(np.float32)
+                node[1]['o'] = (((node[1]['o']-_center)*scale + center)*scale_features).astype(np.float32)
         
         for edge in graph.edges(data=True):
             if 'weight' in edge[2]:
-                edge[2]['weight'] = (edge[2]['weight']*scale*128).astype(np.float32)
+                edge[2]['weight'] = (edge[2]['weight']*scale*scale_features).astype(np.float32)
             if 'pts' in edge[2]:
-                edge[2]['pts'] = (((edge[2]['pts']-_center)*scale + center)*128).astype(np.float32)
+                edge[2]['pts'] = (((edge[2]['pts']-_center)*scale + center)*scale_features).astype(np.float32)
+        E_len = Elen
 
-    attrs = {'polynomial_coeff': c.astype(np.float32), 'Emax': Emax, 'Elen': Elen}
+    attrs = {'polynomial_coeff': c.astype(np.float32), 'E_max': E_max, 'E_len': E_len}
     graph.graph.update(attrs)
 
     return graph

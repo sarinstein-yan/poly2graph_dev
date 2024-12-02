@@ -3,7 +3,7 @@ import networkx as nx
 import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from ..poly2graph import Phi_image, PosGoL
+from ..poly2graph import spectral_potential, PosGoL
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -22,7 +22,8 @@ def visualize_attention_scores(G, pos, labels, node_att, edge_att, is_G, ax):
         'labels': labels,
         'font_color': 'w',
         'font_weight': 'bold',
-        'font_size': 6
+        # 'font_family': 'Georgia',
+        'font_size': 6.2
     }
     edge_options = {
         'edge_color': edge_att,
@@ -136,19 +137,19 @@ class ExplanationSummary():
             raise ValueError('Embeddings not found. Call get_data() before calling this method.')
         if is_G or is_G == 'G':
             emb = [self.pygG.x.numpy()]
-            emb_labels = ['G_x_input']
+            emb_labels = ['Input, G']
             for i in range(1, self.model.num_layer_conv+1):
                 emb.append(self.embeddings['G_node'][f'x_conv{i}'])
                 emb.append(self.embeddings['G_node'][f'x_gru{i}'])
-                emb_labels.extend([f'G_x_conv{i}', f'G_x_gru{i}'])
+                emb_labels.extend([f'Conv, Layer {i}, G', f'GRU, Layer {i}, G'])
             return emb, emb_labels
         elif not is_G or is_G == 'L':
             emb = [self.pygL.x.numpy()]
-            emb_labels = ['L_x_input']
+            emb_labels = ['Input, L']
             for i in range(1, self.model.num_layer_conv+1):
                 emb.append(self.embeddings['L_node'][f'x_conv{i}'])
                 emb.append(self.embeddings['L_node'][f'x_gru{i}'])
-                emb_labels.extend([f'L_x_conv{i}', f'L_x_gru{i}'])
+                emb_labels.extend([f'Conv, Layer {i}, L', f'GRU, Layer {i}, L'])
             return emb, emb_labels
         else:
             raise ValueError('is_G must be a boolean or a string of "G" or "L".')
@@ -193,7 +194,7 @@ class ExplanationSummary():
             nxG.add_node(i, pos=self.pygG.pos[i], att=node_att_G[i], label=i)
         for i in range(self.pygL.num_nodes):
             # alphabetic labels, lowercase
-            nxL.add_node(i, pos=self.pygL.pos[i], att=node_att_L[i], label=chr(97+i))
+            nxL.add_node(i, pos=self.pygL.pos[i], att=node_att_L[i], label=chr(65+i))
         # Add edges with positions and colors
         for i, (s, e) in enumerate(edge_index_G.T):
             if nxG.has_edge(s, e):
@@ -232,13 +233,13 @@ class ExplanationSummary():
         emax = self.pygG.Emax.numpy()[0]
 
         # plot 0: DOS
-        img = PosGoL(Phi_image(
+        img = PosGoL(spectral_potential(
             c=self.poly_coeffs,
             Emax=emax,
             Elen=200
         ), ksizes=[11])
         ax[0].imshow(img, cmap='gray', extent=emax, aspect='equal')
-        ax[0].set_title('Density of State')
+        ax[0].set_title('Density of States')
         ax[0].set_xlabel('Re(E)', labelpad=.01)
         ax[0].set_ylabel('Im(E)', labelpad=.01)
         ax[0].tick_params(axis='both', which='both', direction='in', color='w', pad=2)
@@ -255,20 +256,20 @@ class ExplanationSummary():
             is_G=True, ax=ax[1]
         )
         ax[1].set(
-            title='Attention Scores of G',
+            title='Attention Weights of G',
         )
 
         # plot 2: attention scores of L-channel
         visualize_attention_scores(
             self.nxL,
             self.pygL.pos,
-            {i: f'{chr(97+i)}' for i in range(self.pygL.num_nodes)},
+            {i: f'{chr(65+i)}' for i in range(self.pygL.num_nodes)},
             self.node_color_L,
             self.edge_color_L,
             is_G=False, ax=ax[2]
         )
         ax[2].set(
-            title='Attention Scores of L',
+            title='Attention Weights of L',
         )
 
         return ax
@@ -333,7 +334,7 @@ class ExplanationSummary():
                 is_G=True, ax=axes[0, col])
             axes[0, col].set(title=f'Transformer, Layer 1, Head {col+1}')
             visualize_attention_scores(self.nxL, self.pygL.pos,
-                {i: f'{chr(97+i)}' for i in range(self.pygL.num_nodes)},
+                {i: f'{chr(65+i)}' for i in range(self.pygL.num_nodes)},
                 self.node_color_L, self.edge_color_L,
                 is_G=False, ax=axes[1, col])
             axes[1, col].set(title=f'Transformer, Layer 1, Head {col+1}')
@@ -347,7 +348,7 @@ class ExplanationSummary():
                 is_G=True, ax=axes[row, 0])
             axes[row, 0].set(title=f'GATv2, Layer {row}')
             visualize_attention_scores(self.nxL, self.pygL.pos,
-                {i: f'{chr(97+i)}' for i in range(self.pygL.num_nodes)},
+                {i: f'{chr(65+i)}' for i in range(self.pygL.num_nodes)},
                 self.node_color_L, self.edge_color_L,
                 is_G=False, ax=axes[row, 3])
             axes[row, 3].set(title=f'GATv2, Layer {row}')

@@ -12,17 +12,17 @@ import zipfile, os
 
 # helper functions
 
-def _preprocess_nx_G(Phi_graph: nx.MultiGraph) -> nx.MultiGraph:
+def _preprocess_nx_G(spectral_graph: nx.MultiGraph) -> nx.MultiGraph:
 
-    Phi_graph = Phi_graph.copy()
+    spectral_graph = spectral_graph.copy()
 
-    for n in Phi_graph.nodes(data=True):
+    for n in spectral_graph.nodes(data=True):
         # delete 'pts' attribute to save memory
         if 'pts' in n[1]: del n[1]['pts']
         # scale the node positions back to actual energy values
         n[1]['pos'] = n[1]['o']/128
 
-    for e in Phi_graph.edges(data=True):
+    for e in spectral_graph.edges(data=True):
         # sample `pts5` as G's edge feature
         pts5_idx = np.round(np.linspace(0, len(e[2]['pts'])-1, 7)).astype(int)[1:-1]
         e[2]['pts5'] = e[2]['pts'][pts5_idx].flatten()
@@ -32,12 +32,12 @@ def _preprocess_nx_G(Phi_graph: nx.MultiGraph) -> nx.MultiGraph:
         # delete 'pts' attribute to save memory
         if 'pts' in e[2]: del e[2]['pts']
 
-    return Phi_graph
+    return spectral_graph
 
-def _to_nx_L(Phi_graph: nx.MultiGraph) -> nx.MultiGraph:
-    L = LG_undirected(Phi_graph, triplet_feature=True)
+def _to_nx_L(spectral_graph: nx.MultiGraph) -> nx.MultiGraph:
+    L = LG_undirected(spectral_graph, triplet_feature=True)
     if L.number_of_edges() == 0:
-        L = LG_undirected(Phi_graph, selfloops=True, triplet_feature=True)
+        L = LG_undirected(spectral_graph, selfloops=True, triplet_feature=True)
 
     # choose the middle point of the edge as the node position for L
     for n in L.nodes(data=True):
