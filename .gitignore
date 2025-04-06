@@ -162,6 +162,7 @@ cython_debug/
 #.idea/
 
 # Jupyter Notebook
-dev.ipynb
-gnl_transformer.txt
-experimental.py
+*dev.ipynb
+
+# Project-specific files
+prompt_draft.md
