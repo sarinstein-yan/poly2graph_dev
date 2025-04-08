@@ -64,13 +64,21 @@ z, E = sp.symbols('z E', complex=True)
 ```
 
 ### A generic **one-band** example:
+
 characteristic polynomial:
+
 $$P(E,z) := h(z) - E = z^4 -z -z^{-2} -E$$
+
 Its Bloch Hamiltonian (Fourier transformed Hamiltonian in momentum space) is a scalar function:
+
 $$h(z) = z^4 - z - z^{-2}$$
+
 where the phase factor is defined as $z:=e^{ik}$.
+
 Expressed in terms of crystal momentum $k$:
+
 $$h(k) = e^{4ik} - e^{ik} - e^{-2ik}$$
+
 ---
 The valid input formats to initialize a `p2g.SpectralGraph` object are:
 1. Characteristic polynomial in terms of `z` and `E`:
