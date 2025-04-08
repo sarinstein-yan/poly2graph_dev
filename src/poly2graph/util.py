@@ -1,10 +1,10 @@
 import numpy as np
 import tensorflow as tf
 
-def companion(a):
+def companion_batch(a):
     """
     Create a (/an array of) companion matrix.
-    Same as `scipy.linalg.companion`.
+    Same as `scipy.linalg.companion`, copied here for adaptation.
 
     Create the companion matrix [1]_ associated with the polynomial whose
     coefficients are given in `a`.
@@ -37,26 +37,22 @@ def companion(a):
 
     """
     a = np.atleast_1d(a)
+    n = a.shape[-1]
 
-    if a.ndim != 1:
-        raise ValueError("Incorrect shape for `a`.  `a` must be "
-                         "one-dimensional.")
+    if n < 2:
+        raise ValueError("The length of `a` along the last axis must be at least 2.")
 
-    if a.size < 2:
-        raise ValueError("The length of `a` must be at least 2.")
+    if np.any(a[..., 0] == 0):
+        raise ValueError("The first coefficient(s) of `a` (i.e. elements "
+                         "of `a[..., 0]`) must not be zero.")
 
-    if a[0] == 0:
-        raise ValueError("The first coefficient in `a` must not be zero.")
-
-    first_row = -a[1:] / (1.0 * a[0])
-    n = a.size
-    c = np.zeros((n - 1, n - 1), dtype=first_row.dtype)
-    c[0] = first_row
-    c[list(range(1, n - 1)), list(range(0, n - 2))] = 1
+    first_row = -a[..., 1:] / (1.0 * a[..., 0:1])
+    c = np.zeros(a.shape[:-1] + (n - 1, n - 1), dtype=first_row.dtype)
+    c[..., 0, :] = first_row
+    c[..., np.arange(1, n - 1), np.arange(0, n - 2)] = 1
     return c
 
-
-def kron_batched(a, b):
+def kron_batch(a, b):
     """
     Compute the Kronecker product for each pair of matrices in batches using NumPy.
     
@@ -69,14 +65,14 @@ def kron_batched(a, b):
         of the last two dimensions of a and b.
     """
     a = np.asarray(a); b = np.asarray(b)
-    # Compute the batched outer product using einsum. 
+    # Compute the batched outer product using einsum
     # The resulting tensor has shape (..., N, m, N, m)
     kron = np.einsum('...ij,...kl->...ikjl', a, b)
     # Determine the output shape: reshape (..., N, m, N, m) to (..., N*m, N*m)
     new_shape = a.shape[:-2] + (a.shape[-2] * b.shape[-2], a.shape[-1] * b.shape[-1])
     return kron.reshape(new_shape)
 
-def eig_batched(array_of_matrices, device='/CPU:0', is_hermitian=False):
+def eig_batch(array_of_matrices, device='/CPU:0', is_hermitian=False):
     """
     Compute the eigenvalues and eigenvectors for a batch of matrices using TensorFlow.
 

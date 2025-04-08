@@ -131,7 +131,7 @@ def build_graph(nodes, edges, multi=False, full=True,
             node_pot = {'potential': Potential_image[os[i][0], os[i][1]]}
         else: node_pot = {}
 
-        graph.add_node(i, o=os[i], **node_dos, **node_pot)
+        graph.add_node(i, pos=os[i], **node_dos, **node_pot)
 
         # if add_pts: graph.nodes[i]['pts'] = nodes[i]
 
