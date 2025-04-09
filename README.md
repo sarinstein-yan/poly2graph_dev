@@ -126,13 +126,17 @@ sg.ChP
 sg.h_k
 ```
 
-<span style="color:#d73a49;font-weight:bold">>>></span> $\left[\begin{matrix}e^{4 i k} - e^{i k} - e^{- 2 i k}\end{matrix}\right]$
+<span style="color:#d73a49;font-weight:bold">>>></span>
+
+$$\begin{bmatrix}e^{4 i k} - e^{i k} - e^{- 2 i k}\end{bmatrix}$$
 
 ```python
 sg.h_z
 ```
 
-<span style="color:#d73a49;font-weight:bold">>>></span> $\left[\begin{matrix}- \frac{- z^{6} + z^{3} + 1}{z^{2}}\end{matrix}\right]$
+<span style="color:#d73a49;font-weight:bold">>>></span>
+
+$$\begin{bmatrix}- \frac{- z^{6} + z^{3} + 1}{z^{2}}\end{bmatrix}$$
 
 ---
 **The Frobenius companion matrix of `P(E)(z)`**:
@@ -143,9 +147,14 @@ sg.h_z
 sg.companion_E
 ```
 
-<span style="color:#d73a49;font-weight:bold">>>></span> 
+<span style="color:#d73a49;font-weight:bold">>>></span>
 
-$\left[\begin{matrix}0 & 0 & 0 & 0 & 0 & 1\\1 & 0 & 0 & 0 & 0 & 0\\0 & 1 & 0 & 0 & 0 & E\\0 & 0 & 1 & 0 & 0 & 1\\0 & 0 & 0 & 1 & 0 & 0\\0 & 0 & 0 & 0 & 1 & 0\end{matrix}\right]$
+$$\begin{bmatrix}0 & 0 & 0 & 0 & 0 & 1 \\
+1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 & E \\
+0 & 0 & 1 & 0 & 0 & 1 \\
+0 & 0 & 0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 & 0\end{bmatrix}$$
 
 ---
 **Number of bands & hopping range**:
@@ -155,7 +164,7 @@ print('Max hopping length to the right:', sg.poly_p)
 print('Max hopping length to the left:', sg.poly_q)
 ```
 
-<span style="color:#d73a49;font-weight:bold">>>></span> 
+<span style="color:#d73a49;font-weight:bold">>>></span>
 
 ```text
 Number of bands: 1
@@ -208,11 +217,9 @@ plt.tight_layout(); plt.show()
 
   It can be proven that the spectral potential $\Phi(E)$ can be efficiently computed from the roots $|z_i(E)|$ of the characteristic polynomial $P(E)(z)$ and the leading coefficient $a_q(E)$ at a complex energy $E$:
 
-  $$ \begin{aligned}
-  \Phi(E) &= - \lim_{N\to\infty} \sum_{\epsilon_n} \log|E-\epsilon_n| \\
-  &= - \int \rho(E')\log|E-E'| \; d^2E' \\
-  &= - \log|a_q(E)| - \sum_{i=p+1}^{p+q} \log|z_i(E)| \\
-  \end{aligned} $$
+  $$\Phi(E) = - \lim_{N\to\infty} \sum_{\epsilon_n} \log|E-\epsilon_n| \\
+  = - \int \rho(E')\log|E-E'| d^2E' \\
+  = - \log|a_q(E)| - \sum_{i=p+1}^{p+q} \log|z_i(E)|$$
 
 - Graph Skeleton (Binarized DOS)
 
@@ -266,12 +273,12 @@ $$P(E,z) := \det(\textbf{h}(z) - E\;\textbf{I}) = z^2 + 1/z^2 + E z - E^4$$
 
 One of its possible Bloch Hamiltonians in terms of $z$:
 
-$$\textbf{h}(z)=\begin{pmatrix}
+$$\textbf{h}(z)=\begin{bmatrix}
 0 & 0 & 0 & z^2 + 1/z^2 \\
 1 & 0 & 0 & z \\
 0 & 1 & 0 & 0 \\
 0 & 0 & 1 & 0 \\
-\end{pmatrix}$$
+\end{bmatrix}$$
 
 ---
 
@@ -296,13 +303,23 @@ sg_multi.ChP
 sg_multi.h_k
 ```
 
-<span style="color:#d73a49;font-weight:bold">>>></span> $\left[\begin{matrix}0 & 0 & 0 & 2 \cos{\left(2 k \right)}\\1 & 0 & 0 & e^{i k}\\0 & 1 & 0 & 0\\0 & 0 & 1 & 0\end{matrix}\right]$
+<span style="color:#d73a49;font-weight:bold">>>></span>
+
+$$\begin{bmatrix}0 & 0 & 0 & 2 \cos{\left(2 k \right)} \\
+1 & 0 & 0 & e^{i k} \\
+0 & 1 & 0 & 0 \\
+0 & 0 & 1 & 0\end{bmatrix}$$
 
 ```python
 sg_multi.h_z
 ```
 
-<span style="color:#d73a49;font-weight:bold">>>></span> $\left[\begin{matrix}0 & 0 & 0 & -1\\1 & 0 & 0 & 0\\0 & 1 & 0 & E^{4}\\0 & 0 & 1 & - E\end{matrix}\right]$
+<span style="color:#d73a49;font-weight:bold">>>></span>
+
+$$\begin{bmatrix}0 & 0 & 0 & -1 \\
+1 & 0 & 0 & 0 \\
+0 & 1 & 0 & E^{4} \\
+0 & 0 & 1 & - E\end{bmatrix}$$
 
 ---
 **The Frobenius companion matrix of `P(E)(z)`**:
@@ -311,7 +328,12 @@ sg_multi.h_z
 sg_multi.companion_E
 ```
 
-<span style="color:#d73a49;font-weight:bold">>>></span> $\left[\begin{matrix}0 & 0 & 0 & z^{2} + \frac{1}{z^{2}}\\1 & 0 & 0 & z\\0 & 1 & 0 & 0\\0 & 0 & 1 & 0\end{matrix}\right]$
+<span style="color:#d73a49;font-weight:bold">>>></span>
+
+$$\begin{bmatrix}0 & 0 & 0 & z^{2} + \frac{1}{z^{2}} \\
+1 & 0 & 0 & z \\
+0 & 1 & 0 & 0 \\
+0 & 0 & 1 & 0\end{bmatrix}$$
 
 ---
 **Number of bands & hopping range**:
@@ -321,7 +343,7 @@ print('Max hopping length to the right:', sg_multi.poly_p)
 print('Max hopping length to the left:', sg_multi.poly_q)
 ```
 
-<span style="color:#d73a49;font-weight:bold">>>></span> 
+<span style="color:#d73a49;font-weight:bold">>>></span>
 
 ```text
 Number of bands: 4
