@@ -116,7 +116,7 @@ sg = p2g.SpectralGraph(char_poly_str, k=k, z=z, E=E)
 sg.ChP
 ```
 
-<span style="color:#d73a49;font-weight:bold">>>></span> $\operatorname{Poly}(z^{4}-z-\frac{1}{z^{2}}-E,z,\frac{1}{z},E,\mathbb{Z})$
+<span style="color:#d73a49;font-weight:bold">>>></span> $\text{Poly}(z^{4}-z-\frac{1}{z^{2}}-E,z,\frac{1}{z},E,\mathbb{Z})$
 
 ---
 **Bloch Hamiltonian**:
@@ -286,7 +286,7 @@ sg_multi = p2g.SpectralGraph("z**2 + 1/z**2 + E*z - E**4", k, z, E)
 sg_multi.ChP
 ```
 
-<span style="color:#d73a49;font-weight:bold">>>></span> $\operatorname{Poly}{\left( z^{2} + zE + \frac{1}{z^{2}} - E^{4}, z, \frac{1}{z}, E, domain=\mathbb{Z} \right)}$
+<span style="color:#d73a49;font-weight:bold">>>></span> $\text{Poly}{\left( z^{2} + zE + \frac{1}{z^{2}} - E^{4}, z, \frac{1}{z}, E, domain=\mathbb{Z} \right)}$
 
 ---
 **Bloch Hamiltonian**:
